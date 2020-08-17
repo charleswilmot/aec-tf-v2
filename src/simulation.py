@@ -7,6 +7,7 @@ from collections import defaultdict
 import numpy as np
 from contextlib import contextmanager
 from traceback import format_exc
+from custom_shapes import Head, Screen
 import time
 
 
@@ -131,7 +132,7 @@ class SimulationConsumerAbstract(mp.Process):
         self._pyrep.launch(
             self._scene,
             headless=not self._gui,
-            write_coppeliasim_stdout_to_file=True
+            write_coppeliasim_stdout_to_file=False
         )
         self._process_io["simulaton_ready"].set()
         self._main_loop()
@@ -184,6 +185,42 @@ class SimulationConsumer(SimulationConsumerAbstract):
         self._arm_list = []
         self._state_buffer = None
         self._cams = {}
+        self.head = None
+        self.background = None
+
+    def add_head(self):
+        if self.head is None:
+            model = self._pyrep.import_model(MODEL_PATH + "/head.ttm")
+            model = Head(model.get_handle(), self._pyrep)
+            self.head = model
+            return self.head
+        else:
+            raise ValueError("Can not add two heads to the simulation at the same time")
+
+    def add_background(self, name):
+        if self.background is None:
+            model = self._pyrep.import_model(MODEL_PATH + "/{}.ttm".format(name))
+            model = Head(model.get_handle(), self._pyrep)
+            self.background = model
+            return self.background
+        else:
+            raise ValueError("Can not add two backgrounds to the simulation at the same time")
+
+    def add_camera(self, eye, resolution, view_angle):
+        if self.head is None:
+            raise ValueError("Can not add a camera with no head")
+        else:
+            position = self.head.get_eye_position(eye)
+            orientation = self.head.get_eye_orientation(eye)
+            vision_sensor = VisionSensor.create(
+                resolution=resolution,
+                position=position,
+                orientation=orientation,
+                view_angle=view_angle,
+            )
+            cam_id = vision_sensor.get_handle()
+            self._cams[cam_id] = vision_sensor
+            return cam_id
 
     @communicate_return_value
     def get_state(self):
