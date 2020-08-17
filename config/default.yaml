@@ -1,0 +1,341 @@
+agent:
+  policy_learning_rate: 1e-3
+  critic_learning_rate: 1e-3
+  forward_learning_rate: 1e-3
+  state_size: 25
+  action_size: ${simulation.n_joints}
+  goal_size: ${simulation.n_registers}
+  n_simulations: ${simulation.n}
+  target_smoothing_stddev: 0.01
+  tau: 0.001
+  exploration:
+    stddev: 1.0
+    n: 1
+    autotune_scale: 0.5
+    success_rate_estimator_speed: 0.1
+
+  policy_model_arch:
+    backend: tensorflow
+    class_name: Sequential
+    config:
+      layers:
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_1
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: tanh
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_2
+          trainable: true
+          units: ${simulation.n_joints}
+          use_bias: true
+      name: sequential
+    keras_version: 2.3.0-tf
+
+  critic_model_arch:
+    backend: tensorflow
+    class_name: Sequential
+    config:
+      layers:
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_1
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: linear
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_2
+          trainable: true
+          units: 1
+          use_bias: true
+      name: sequential
+    keras_version: 2.3.0-tf
+
+  next_critic_model_arch:
+    backend: tensorflow
+    class_name: Sequential
+    config:
+      layers:
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_1
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: linear
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_2
+          trainable: true
+          units: 1
+          use_bias: true
+      name: sequential
+    keras_version: 2.3.0-tf
+
+  forward_model_arch:
+    backend: tensorflow
+    class_name: Sequential
+    config:
+      layers:
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: relu
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_1
+          trainable: true
+          units: 200
+          use_bias: true
+      - class_name: Dense
+        config:
+          activation: linear
+          activity_regularizer: null
+          bias_constraint: null
+          bias_initializer:
+            class_name: Zeros
+            config: {}
+          bias_regularizer: null
+          dtype: float32
+          kernel_constraint: null
+          kernel_initializer:
+            class_name: GlorotUniform
+            config:
+              seed: null
+          kernel_regularizer: null
+          name: dense_2
+          trainable: true
+          units: ${agent.state_size}
+          use_bias: true
+      name: sequential
+    keras_version: 2.3.0-tf
+
+
+buffer:
+  size: 100000
+
+
+simulation:
+  n: 40
+  guis:
+    -
+  environment: one_arm_4_buttons
+  n_registers: 4
+  n_joints: 7
+
+
+procedure:
+  episode_length: 25
+  batch_size: 256
+  discount_factor: 0.7
+  updates_per_sample: 8
+  simulation_timestep: 0.2
+  movement_mode: minimalist
+  movement_span_in_sec: 2
+  log_freq: 1
+  her:
+    max_replays: 2
+  metabolic_cost_scale: 0.0
+
+experiment:
+  n_episodes: 30000
+  policy_every: 2
+  critic_every: 1
+  forward_every: 1
+  evaluate_every: 20
+  record_episode_every: 1000000000
+  save_every: 100
+  final_recording: False
+  dump_buffers_at:
+    - 100
+
+
+hydra:
+  run:
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}_${hydra.job.override_dirname}
+  sweep:
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+    subdir: job${hydra.job.num}_${hydra.job.override_dirname}
+  job:
+    config:
+      # configuration for the ${hydra.job.override_dirname} runtime variable
+      override_dirname:
+        kv_sep: '.'
+        item_sep: '__'
+        exclude_keys: []
