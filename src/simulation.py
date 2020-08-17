@@ -414,6 +414,6 @@ if __name__ == '__main__':
         for i in range(1000):
             print(i)
             simulation.step_sim()
-        simlulation.stop_sim()
+        simulation.stop_sim()
 
     test_1()
