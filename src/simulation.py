@@ -191,7 +191,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
     def add_head(self):
         if self.head is None:
             model = self._pyrep.import_model(MODEL_PATH + "/head.ttm")
-            model = Head(model.get_handle(), self._pyrep)
+            model = Head(model.get_handle())
             self.head = model
             return self.head
         else:
