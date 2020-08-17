@@ -445,9 +445,10 @@ class SimulationPool:
 
 if __name__ == '__main__':
     def test_1():
-        scene = "/home/aecgroup/aecdata/Software/vrep_scenes/stereo_vision_robot_collection.ttt"
-        simulation = SimulationProducer(scene, gui=True)
+        simulation = SimulationProducer(gui=True)
         simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_head()
         for i in range(1000):
             print(i)
             simulation.step_sim()
