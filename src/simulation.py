@@ -410,10 +410,10 @@ if __name__ == '__main__':
     def test_1():
         scene = "/home/aecgroup/aecdata/Software/vrep_scenes/stereo_vision_robot_collection.ttt"
         simulation = SimulationProducer(scene, gui=True)
-        simulation.start()
+        simulation.start_sim()
         for i in range(1000):
             print(i)
-            simulation.step()
-        simlulation.stop()
+            simulation.step_sim()
+        simlulation.stop_sim()
 
     test_1()
