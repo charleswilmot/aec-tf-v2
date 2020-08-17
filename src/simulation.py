@@ -1,5 +1,6 @@
 from pyrep import PyRep
 from pyrep.objects import VisionSensor
+from pyrep.const import RenderMode
 import multiprocessing as mp
 import os
 from pathlib import Path
@@ -7,7 +8,7 @@ from collections import defaultdict
 import numpy as np
 from contextlib import contextmanager
 from traceback import format_exc
-from custom_shapes import Head, Screen
+from custom_shapes import Head, Screen, UniformMotionScreen
 import time
 
 
@@ -116,7 +117,7 @@ class SimulationConsumerAbstract(mp.Process):
     _id = 0
     """This class sole purpose is to better 'hide' all interprocess related code
     from the user."""
-    def __init__(self, process_io, scene="", gui=False):
+    def __init__(self, process_io, scene="../models/empty_scene.ttt", gui=False):
         super().__init__(
             name="simulation_consumer_{}".format(SimulationConsumerAbstract._id)
         )
@@ -178,15 +179,19 @@ class SimulationConsumerAbstract(mp.Process):
 
 @default_dont_communicate_return
 class SimulationConsumer(SimulationConsumerAbstract):
-    def __init__(self, process_io, scene="", gui=False):
+    def __init__(self, process_io, scene="../models/empty_scene.ttt", gui=False):
         super().__init__(process_io, scene, gui)
         self._shapes = defaultdict(list)
         self._stateful_shape_list = []
         self._arm_list = []
         self._state_buffer = None
         self._cams = {}
+        self._screens = {}
+        self._textures = {}
         self.head = None
         self.background = None
+        self.uniform_motion_screen = None
+        self.scales = {}
 
     def add_head(self):
         if self.head is None:
@@ -200,11 +205,56 @@ class SimulationConsumer(SimulationConsumerAbstract):
     def add_background(self, name):
         if self.background is None:
             model = self._pyrep.import_model(MODEL_PATH + "/{}.ttm".format(name))
-            model = Head(model.get_handle(), self._pyrep)
             self.background = model
             return self.background
         else:
             raise ValueError("Can not add two backgrounds to the simulation at the same time")
+
+    def add_textures(self, textures_path):
+        textures_names = os.listdir(textures_path)
+        textures_list = []
+        for name in textures_names:
+            if name not in self._textures:
+                self._textures[name] = self._pyrep.create_texture(
+                    os.path.normpath(textures_path + '/' + name))[1]
+            textures_list.append(self._textures[name])
+        return textures_list
+
+    def add_screen(self, textures_path, size=1.5):
+        textures_list = self.add_textures(textures_path)
+        screen = Screen(textures_list, size=size)
+        screen_id = screen.get_handle()
+        self._screens[screen_id] = screen
+        return screen_id
+
+    def add_uniform_motion_screen(self, textures_path, size=1.5,
+            min_distance=0.5, max_distance=5.0,
+            max_depth_speed=0.03, max_speed_in_deg=1.125):
+        if self.uniform_motion_screen is not None:
+            raise ValueError("Can not add multiple uniform motion screens")
+        else:
+            textures_list = self.add_textures(textures_path)
+            screen = UniformMotionScreen(textures_list, size, min_distance,
+                max_distance, max_depth_speed, max_speed_in_deg)
+            screen_id = screen.get_handle()
+            self._screens[screen_id] = screen
+            self.uniform_motion_screen = screen
+            return screen_id
+
+    def episode_reset_uniform_motion_screen(self, start_distance=None,
+            depth_speed=None, angular_speed=None, direction=None,
+            texture_id=None, preinit=False):
+        if self.uniform_motion_screen is None:
+            raise ValueError("No uniform motion screens in the simulation")
+        else:
+            self.uniform_motion_screen.episode_reset(start_distance,
+                depth_speed, angular_speed, direction, texture_id, preinit)
+
+    def move_uniform_motion_screen(self):
+        if self.uniform_motion_screen is None:
+            raise ValueError("No uniform motion screens in the simulation")
+        else:
+            self.uniform_motion_screen.move()
 
     def add_camera(self, eye, resolution, view_angle):
         if self.head is None:
@@ -217,10 +267,31 @@ class SimulationConsumer(SimulationConsumerAbstract):
                 position=position,
                 orientation=orientation,
                 view_angle=view_angle,
+                far_clipping_plane=100.0,
+                render_mode=RenderMode.OPENGL,
             )
+            vision_sensor.set_parent(self.head.get_eye_parent(eye))
             cam_id = vision_sensor.get_handle()
             self._cams[cam_id] = vision_sensor
             return cam_id
+
+    @communicate_return_value
+    def get_vision(self):
+        return {
+            scale_id: np.concatenate([
+                self._cams[left].capture_rgb(),
+                self._cams[right].capture_rgb()
+                ], axis=-1) * 2 - 1
+            for scale_id, (left, right) in self.scales.items()
+        }
+
+    def add_scale(self, id, resolution, view_angle):
+        if id in self.scales:
+            raise ValueError("Scale with id {} is already present".format(id))
+        else:
+            left = self.add_camera('left', resolution, view_angle)
+            right = self.add_camera('right', resolution, view_angle)
+            self.scales[id] = (left, right)
 
     @communicate_return_value
     def get_state(self):
@@ -330,7 +401,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
 
 @consumer_to_producer_method_conversion
 class SimulationProducer(object):
-    def __init__(self, scene="", gui=False):
+    def __init__(self, scene="../models/empty_scene.ttt", gui=False):
         self._process_io = {}
         self._process_io["must_quit"] = mp.Event()
         self._process_io["simulaton_ready"] = mp.Event()
@@ -407,7 +478,7 @@ class SimulationProducer(object):
 
 @producer_to_pool_method_convertion
 class SimulationPool:
-    def __init__(self, size, scene="", guis=[]):
+    def __init__(self, size, scene="../models/empty_scene.ttt", guis=[]):
         self._producers = [
             SimulationProducer(scene, gui=i in guis) for i in range(size)
         ]
@@ -448,10 +519,36 @@ if __name__ == '__main__':
         simulation = SimulationProducer(gui=True)
         simulation.start_sim()
         simulation.step_sim()
+        simulation.add_background("ny_times_square")
         simulation.add_head()
-        for i in range(1000):
-            print(i)
+        simulation.add_scale("fine", (32, 32), 2.0)
+        simulation.add_scale("coarse", (32, 32), 6.0)
+        simulation.step_sim()
+        N = 100
+        t0 = time.time()
+        for i in range(N):
+            vision = simulation.get_vision()
             simulation.step_sim()
+        t1 = time.time()
+
+        print("\n")
+        print(vision)
+        print("\n")
+        print("{:.3f} FPS".format(N / (t1 - t0)))
         simulation.stop_sim()
 
-    test_1()
+    def test_2():
+        simulation = SimulationProducer(gui=True)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_head()
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        for i in range(100):
+            simulation.episode_reset_uniform_motion_screen()
+            for j in range(20):
+                print(i, end='\r')
+                simulation.move_uniform_motion_screen()
+                simulation.step_sim()
+        simulation.stop_sim()
+
+    test_2()
