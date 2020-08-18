@@ -8,35 +8,6 @@ def divide_no_nan(a, b, default=0.0):
     return np.divide(a, b, out=np.full_like(a, fill_value=default), where=b!=0)
 
 
-def model_copy(model, fake_inp):
-    clone = keras.models.clone_model(model)
-    fake_out = model(fake_inp)
-    fake_out = clone(fake_inp)
-    for model_var, clone_var in zip(model.variables, clone.variables):
-        clone_var.assign(model_var)
-    return clone
-
-
-@tf.function
-def to_matching_shape(*args):
-    ranks = [len(t.get_shape()) for t in args]
-    rank_2 = [r == 2 for r in ranks]
-    rank_3 = [r == 3 for r in ranks]
-    n_rank_2 = rank_2.count(True)
-    n_rank_3 = rank_3.count(True)
-    print("tracing with {} rank 2 and {} rank 3".format(n_rank_2, n_rank_3))
-    ret = []
-    if n_rank_2 and n_rank_3:
-        axis_1_size = args[rank_3.index(True)].shape[1]
-        for rank, tensor in zip(ranks, args):
-            if rank == 2:
-                tensor = tf.stack([tensor for i in range(axis_1_size)], axis=1)
-            ret.append(tensor)
-        return ret
-    else:
-        return args
-
-
 class Agent(object):
     def __init__(self,
             policy_learning_rate, policy_model_arch,
@@ -49,7 +20,6 @@ class Agent(object):
         self.encoder_learning_rate = encoder_learning_rate
         self.encoder_optimizer = keras.optimizers.Adam(self.encoder_learning_rate)
         self.models = {}
-        keras.models.clone_model(self.critic_model_0)
         for pathway in pathways:
             #   POLICY
             self.models[pathway.name] = {}
@@ -113,75 +83,113 @@ class Agent(object):
         self.encoder_model.load_weights(path + "/encoder_model")
 
     @tf.function
-    def get_encodings(self, **vision, concat_scales=False):
-        # keys in vision must have the form "pathway_scale_time"
-        # examples:
-        # "pavrocellular_fine_before"
-        # "pavrocellular_fine_after"
-        # "magnocellular_coarse_before"
-        # if concat scales is False:
-        #     returns a dict {"pathway_name": {"scale_name": encodings}}
-        # else:
-        #     returns a dict {"pathway_name": concatenated_encodings}
-        pass
+    def get_encodings(self, frame_by_scale, pathway_name):
+        return {
+            scale_name: self.models[pathway_name]["encoder_models"][scale_name](frame)
+            for scale_name, frame in frame_by_scale.items()
+        }
 
     @tf.function
-    def get_reconstructions(self, **vision):
-        # returns a dict {"pathway_name": {"scale_name": reconstruction}}
-        pass
+    def get_reconstructions(self, frame_by_scale, pathway_name):
+        encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
+        return {
+            scale_name: self.models[pathway_name]["decoder_models"][scale_name](encoding)
+            for scale_name, encoding in encodings_by_scale.items()
+        }
 
     @tf.function
-    def get_return_estimates(self, **vision):
-        # returns a dict {"pathway_name": return_estimates}
-        pass
+    def get_return_estimates(self, frame_by_scale, actions, pathway_name):
+        encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
+        return self.models[pathway_name]["critic_model"](encodings_by_scale, actions)
 
     @tf.function
-    def get_actions(self, **vision, exploration=False):
-        # returns a dict {"pathway_name": actions}
-        pass
-
-    @tf.function
-    def train_encoders(self, **vision):
-        pass
-
-    @tf.function
-    def train_critics(self, **vision):
-        pass
-
-    @tf.function
-    def train_policies(self, **vision):
-        pass
-
-    @tf.function
-    def train(self, **vision, encoders=True, critics=True, policies=True):
-        pass
-
-    @tf.function
-    def get_actions(self, states, goals, exploration=False, target=False,
-            n_simulation_respected=True):
-        states, goals = to_matching_shape(states, goals)
-        inps = tf.concat([states, tf.cast(goals, tf.float32)], axis=-1)
-        stddev = self.exploration_stddev
-        pure_actions = self.policy_model(inps)
-        shape = tf.shape(pure_actions)
-        shape = tf.concat([shape[:1], [self.exploration_n], shape[1:]], axis=0)
+    def get_actions(self, frame_by_scale, pathway_name, exploration=False):
+        encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
+        pure_actions = self.models[pathway_name]["policy_model"](encodings_by_scale)
         if exploration:
             noises = tf.random.truncated_normal(
-                shape=shape,
-                stddev=stddev,
+                shape=tf.shape(pure_actions),
+                stddev=self.exploration_stddev,
             )
-            if n_simulation_respected:
-                noises *= self.stddev_coefs[:, np.newaxis, np.newaxis]
-            pure_actions_reshaped = pure_actions[:, tf.newaxis]
             noisy_actions = tf.clip_by_value(
-                pure_actions_reshaped + noises,
+                pure_actions + noises,
                 clip_value_min=-1,
                 clip_value_max=1
             )
-            noises = noisy_actions - pure_actions_reshaped
-            return pure_actions, noisy_actions, noises
+            return pure_actions, noisy_actions
         else:
             return pure_actions
+
+    @tf.function
+    def get_encoder_loss_by_scale(self, frame_by_scale, pathway_name):
+        reconstructions_by_scale = self.get_reconstructions(frame_by_scale, pathway_name)
+        patches_by_scale = {
+            scale_name: tf.extract_image_patches(
+                frame,
+                sizes=[1, 8, 8, 1],
+                strides=[1, 4, 4, 1],
+                rates=[1, 1, 1, 1],
+                padding='VALID',
+            ) for scale_name, frame in frame_by_scale.items()
+        }
+        return {
+            scale_name: tf.reduce_mean(
+                (patches - reconstructions) ** 2,
+                axis=[1, 2, 3, 4],
+            ) for (scale_name, patches), (_, reconstructions) in
+            zip(patches_by_scale.items(), reconstructions_by_scale.items())
+        }
+
+    @tf.function
+    def train_encoders(self, frame_by_scale, pathway_name):
+        with tf.GradientTape() as tape:
+            loss_by_scale = self.get_encoder_loss_by_scale(frame_by_scale, pathway_name)
+            total_loss_by_scale = {
+                scale_name: tf.reduce_sum(scale_loss)
+                for scale_name, scale_loss in loss_by_scale.items()
+            }
+            total_loss = sum(total_loss_by_scale.values())
+            vars = [model.variables for model in self.models[pathway_name]["encoder_models"].values()] + \
+                   [model.variables for model in self.models[pathway_name]["decoder_models"].values()]
+            grads = tape.gradient(total_loss, vars)
+            self.encoder_optimizer.apply_gradients(zip(grads, vars))
+        return total_loss
+
+    @tf.function
+    def train_critics(self, frame_by_scale, actions, targets, pathway_name):
+        with tf.GradientTape() as tape:
+            return_estimates = self.get_return_estimates(frame_by_scale, actions, pathway_name)
+            loss_critic = keras.losses.Huber()(return_estimates, tf.stop_gradient(targets))
+            vars = self.models[pathway_name]["critic_model"].variables
+            grads = tape.gradient(total_loss, vars)
+            self.critic_optimizer.apply_gradients(zip(grads, vars))
+        return loss_critic
+
+    @tf.function
+    def train_policies(self, frame_by_scale, pathway_name):
+        with tf.GradientTape() as tape:
+            actions = self.get_actions(frame_by_scale, pathway_name, exploration=False)
+            return_estimates = self.get_return_estimates(frame_by_scale, actions, pathway_name)
+            loss_policy = - tf.reduce_sum(return_estimates)
+            vars = self.models[pathway_name]["policy_model"].variables
+            grads = tape.gradient(loss_policy, vars)
+            self.policy_optimizer.apply_gradients(zip(grads, vars))
+        return loss_policy
+
+    @tf.function
+    def train(self, frame_by_scale, actions, targets, pathway_name,
+            encoders=True, critic=True, policy=True):
+        losses = {}
+        if encoders:
+            encoders_loss = self.train_encoders(frame_by_scale, pathway_name)
+            losses["forward"] = forward_loss
+        if critic:
+            critic_loss = self.train_critic(frame_by_scale, actions, targets, pathway_name)
+            losses["critic"] = critic_loss
+        if policy:
+            policy_loss = self.train_policy(frame_by_scale, pathway_name)
+            losses["policy"] = policy_loss
+        return losses
 
     def register_total_reward(self, rewards):
         stddevs = self.stddev_coefs * self.exploration_stddev
@@ -209,98 +217,3 @@ class Agent(object):
             best_std = 0.5 * (self.bins[index - 1] + self.bins[index])
         best_std = c * min(best_std, 1.0) + (1 - c) * self.exploration_stddev.numpy()
         self.exploration_stddev.assign(best_std)
-
-    @tf.function
-    def get_predictions(self, states, actions):
-        states, actions = to_matching_shape(states, actions)
-        inps = tf.concat([states, actions], axis=-1)
-        return self.forward_model(inps)
-
-    @tf.function
-    def get_return_estimates(self, states, actions, goals, target=False):
-        states, actions, goals = to_matching_shape(states, actions, goals)
-        inps = tf.concat([states, actions, tf.cast(goals, tf.float32)], axis=-1)
-        if target:
-            target_0 = self.target_critic_model_0(inps)
-            target_1 = self.target_critic_model_1(inps)
-            return tf.minimum(target_0, target_1)
-        else:
-            return (self.critic_model_0(inps) + self.critic_model_1(inps)) / 2
-
-    @tf.function
-    def get_next_return_estimates(self, predicted_next_states, goals):
-        predicted_next_states, goals = to_matching_shape(predicted_next_states, goals)
-        inps = tf.concat([predicted_next_states, tf.cast(goals, tf.float32)], axis=-1)
-        return self.next_critic_model(inps)
-
-    @tf.function
-    def train_critic(self, states, predicted_next_states, actions, goals, targets, next_targets):
-        with tf.GradientTape() as tape:
-            estimates = self.get_return_estimates(states, actions, goals)
-            loss_critic = keras.losses.Huber()(estimates, tf.stop_gradient(targets))
-            vars = self.critic_model_0.variables + self.critic_model_1.variables
-            grads = tape.gradient(loss_critic, vars)
-            self.critic_optimizer.apply_gradients(zip(grads, vars))
-
-        with tf.GradientTape() as tape:
-            estimates = self.get_next_return_estimates(predicted_next_states, goals)
-            loss_next_critic = keras.losses.Huber()(estimates, tf.stop_gradient(next_targets))
-            vars = self.next_critic_model.variables
-            grads = tape.gradient(loss_next_critic, vars)
-            self.next_critic_optimizer.apply_gradients(zip(grads, vars))
-        return loss_critic, loss_next_critic
-
-    @tf.function
-    def train_policy(self, states, goals):
-        with tf.GradientTape() as tape:
-            actions = self.get_actions(states, goals, exploration=False)
-            estimates = self.get_return_estimates(states, actions, goals)
-            loss = - tf.reduce_sum(estimates)
-            vars = self.policy_model.variables
-            grads = tape.gradient(loss, vars)
-            self.policy_optimizer.apply_gradients(zip(grads, vars))
-        return loss
-
-    @tf.function
-    def train_forward(self, states, actions, targets):
-        with tf.GradientTape() as tape:
-            predictions = self.get_predictions(states, actions)
-            losses = keras.losses.MSE(predictions, targets)
-            loss = tf.reduce_sum(tf.reduce_mean(losses, axis=-1))
-            vars = self.forward_model.variables
-            grads = tape.gradient(loss, vars)
-            self.forward_optimizer.apply_gradients(zip(grads, vars))
-        return loss
-
-    @tf.function
-    def update_targets(self):
-        model_target_pairs = [
-            (self.critic_model_0, self.target_critic_model_0),
-            (self.critic_model_1, self.target_critic_model_1),
-            (self.policy_model, self.target_policy_model),
-        ]
-        for model, target in model_target_pairs:
-            for model_var, target_var in zip(model.variables, target.variables):
-                target_var.assign(
-                    (1 - self.tau) * target_var +
-                    self.tau * model_var
-                )
-
-    @tf.function
-    def train(self, states, predicted_next_states, actions, goals,
-            critic_target, next_critic_target, forward_target, policy=True, critic=True,
-            forward=True):
-        losses = {}
-        if critic:
-            critic_loss, next_critic_loss = self.train_critic(
-                states, predicted_next_states, actions, goals, critic_target, next_critic_target)
-            losses["critic"] = critic_loss
-            losses["next_critic"] = next_critic_loss
-        if forward:
-            forward_loss = self.train_forward(states, actions, forward_target)
-            losses["forward"] = forward_loss
-        if policy:
-            policy_loss = self.train_policy(states, goals)
-            losses["policy"] = policy_loss
-        self.update_targets()
-        return losses
