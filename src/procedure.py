@@ -27,20 +27,6 @@ def get_snr_db(signal, noise, axis=1):
     return 20 * (rms_signal_db - rms_noise_db)
 
 
-anaglyph_matrix = np.array([
-    [0.299, 0    , 0    ],
-    [0.587, 0    , 0    ],
-    [0.114, 0    , 0    ],
-    [0    , 0.299, 0.299],
-    [0    , 0.587, 0.587],
-    [0    , 0.114, 0.114],
-    ])
-
-
-def anaglyph(left_right):
-    return np.matmul((left_right + 1) * 127.5, anaglyph_matrix).astype(np.uint8)
-
-
 class Procedure(object):
     def __init__(self, agent_conf, buffer_conf, simulation_conf, procedure_conf):
         #   PROCEDURE CONF
@@ -70,8 +56,11 @@ class Procedure(object):
             scene="",
             guis=guis
         )
-        self.simulation_pool.create_environment(simulation_conf.environment)
-        # self.simulation_pool.set_control_loop_enabled(False)
+        self.simulation_pool.add_background("ny_times_square")
+        self.simulation_pool.add_head()
+        for scale in procedure_conf.scales:
+            self.simulation_pool.add_scale(scale.name, (scale.resolution, scale.resolution), scale.view_angle)
+        self.simulation_pool.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
         self.simulation_pool.start_sim()
         self.simulation_pool.step_sim()
         print("[procedure] all simulation started")
@@ -80,11 +69,11 @@ class Procedure(object):
         # training
         pavro_dtype = np.dtype([
             (scale.name, (scale.resolution, scale.resolution, 6), np.float32)
-            for scale in agent_conf.scales
+            for scale in procedure_conf.scales
         ])
         pavro_dtype = np.dtype([
             (scale.name, (scale.resolution, scale.resolution, 12), np.float32)
-            for scale in agent_conf.scales
+            for scale in procedure_conf.scales
         ])
         n_pavro_joints = len(agent_conf.pathways[0].joints)
         n_magno_joints = len(agent_conf.pathways[1].joints)
@@ -297,32 +286,6 @@ class Procedure(object):
 
     def get_joint_errors(self):
         return tuple(zip(self.simulation_pool.get_joint_errors()))
-
-    def record(self, exploration=False, n_episodes=10, video_name='replay', resolution=320):
-        writers = [get_writer(video_name + "_{:02d}.mp4".format(i)) for i in range(self.n_simulations)]
-        self.simulation_pool.add_scale("record", resolution, 90.0)
-        self.episode_reset_uniform_motion_screen(preinit=True)
-        vision_after = self.get_vision()
-        self.simulation_pool.step_sim()
-        for iteration in range(self.episode_length):
-            for writer, left_right in zip(writers, vision_after["record"]):
-                writer.append_data(anaglyph(left_right))
-            vision_before = vision_after
-            vision_after = self.get_vision()
-            pavro_vision = vision_after
-            magno_vision = self.merge_before_after(vision_before, vision_after)
-            if exploration:
-                _, pavro_noisy_actions = self.agent.get_actions(pavro_vision, "pavro", explore=True)
-                _, magno_noisy_actions = self.agent.get_actions(magno_vision, "magno", explore=True)
-                actions = np.concatenate([magno_noisy_actions, pavro_noisy_actions], axis=-1)
-            else:
-                pavro_pure_actions = self.agent.get_actions(pavro_vision, "pavro")
-                magno_pure_actions = self.agent.get_actions(magno_vision, "magno")
-                actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
-            self.apply_action(actions)
-        self.simulation_pool.delete_scale("record")
-        for writer in writers:
-            writer.close()
 
     def merge_before_after(self, before, after):
         return {

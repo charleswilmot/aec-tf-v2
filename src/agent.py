@@ -10,9 +10,8 @@ def divide_no_nan(a, b, default=0.0):
 
 class Agent(object):
     def __init__(self,
-            policy_learning_rate, policy_model_arch,
-            critic_learning_rate, critic_model_arch,
-            encoder_learning_rate, exploration, n_simulations, action_scaling):
+            policy_learning_rate, critic_learning_rate, encoder_learning_rate,
+            exploration, n_simulations, action_scaling, pathways):
         self.policy_learning_rate = policy_learning_rate
         self.policy_optimizer = keras.optimizers.Adam(self.policy_learning_rate)
         self.critic_learning_rate = critic_learning_rate
@@ -25,13 +24,13 @@ class Agent(object):
             self.models[pathway.name] = {}
             self.models[pathway.name]["policy_model"] = \
                 keras.models.model_from_yaml(
-                    policy_model_arch.pretty(resolve=True),
+                    pathway.policy_model_arch.pretty(resolve=True),
                     custom_objects=custom_objects
                 )
             #   CRITIC
             self.models[pathway.name]["critic_model"] = \
                 keras.models.model_from_yaml(
-                    critic_model_arch.pretty(resolve=True),
+                    pathway.critic_model_arch.pretty(resolve=True),
                     custom_objects=custom_objects
                 )
             #   ENCODERS / DECODERS

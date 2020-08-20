@@ -11,6 +11,14 @@ procedure:
   batch_size: 256
   updates_per_sample: 8
   log_freq: 1
+  scales:
+    - name: fine
+      resolution: 32
+      view_angle: 9
+    - name: coarse
+      resolution: 32
+      view_angle: 27
+
 
 experiment:
   n_episodes: 100000
@@ -37,30 +45,466 @@ agent:
     autotune_scale: 0.5
     success_rate_estimator_speed: 0.1
 
-  scales:
-    - name: fine
-      resolution: 32
-      view_angle: 9
-    - name: coarse
-      resolution: 32
-      view_angle: 27
-
   pathways:
     - name: pavro
       joints:
         - vergence
+        - cyclo
       encoder_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: Conv2D
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              data_format: channels_last
+              dilation_rate: &id001 !!python/tuple
+              - 1
+              - 1
+              dtype: float32
+              filters: 16
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              kernel_size: !!python/tuple
+              - 8
+              - 8
+              name: conv2d_4
+              padding: valid
+              strides: !!python/tuple
+              - 4
+              - 4
+              trainable: true
+              use_bias: true
+          - class_name: Conv2D
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              data_format: channels_last
+              dilation_rate: *id001
+              dtype: float32
+              filters: 16
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              kernel_size: &id002 !!python/tuple
+              - 1
+              - 1
+              name: conv2d_5
+              padding: valid
+              strides: *id002
+              trainable: true
+              use_bias: true
+          name: sequential_1
+        keras_version: 2.3.0-tf
       decoder_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: Conv2D
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              data_format: channels_last
+              dilation_rate: !!python/tuple
+              - 1
+              - 1
+              dtype: float32
+              filters: 384
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              kernel_size: &id001 !!python/tuple
+              - 1
+              - 1
+              name: conv2d_6
+              padding: valid
+              strides: *id001
+              trainable: true
+              use_bias: true
+          name: sequential_2
+        keras_version: 2.3.0-tf
+      policy_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: PolicyPerScaleConv2D
+            config:
+              activation: relu
+              filters: 16
+              kernel_size: &id001 !!python/tuple
+              - 2
+              - 2
+              n_scales: 2
+              padding: valid
+              pool_padding: valid
+              pool_size: *id001
+              pool_strides: *id001
+              strides: !!python/tuple
+              - 1
+              - 1
+          - class_name: Dense
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense_2
+              trainable: true
+              units: 200
+              use_bias: true
+          - class_name: Dense
+            config:
+              activation: tanh
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense_3
+              trainable: true
+              units: 2
+              use_bias: true
+          name: sequential_4
+        keras_version: 2.3.0-tf
+      critic_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: CriticPerScaleConv2D
+            config:
+              activation: relu
+              filters: 16
+              kernel_size: &id001 !!python/tuple
+              - 2
+              - 2
+              n_scales: 2
+              padding: valid
+              pool_padding: valid
+              pool_size: *id001
+              pool_strides: *id001
+              strides: !!python/tuple
+              - 1
+              - 1
+          - class_name: Dense
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense
+              trainable: true
+              units: 200
+              use_bias: true
+          - class_name: Dense
+            config:
+              activation: linear
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense_1
+              trainable: true
+              units: 1
+              use_bias: true
+          name: sequential_3
+        keras_version: 2.3.0-tf
 
     - name: magno
       joints:
         - tilt
         - pan
       encoder_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: Conv2D
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              data_format: channels_last
+              dilation_rate: &id001 !!python/tuple
+              - 1
+              - 1
+              dtype: float32
+              filters: 16
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              kernel_size: !!python/tuple
+              - 8
+              - 8
+              name: conv2d_4
+              padding: valid
+              strides: !!python/tuple
+              - 4
+              - 4
+              trainable: true
+              use_bias: true
+          - class_name: Conv2D
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              data_format: channels_last
+              dilation_rate: *id001
+              dtype: float32
+              filters: 16
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              kernel_size: &id002 !!python/tuple
+              - 1
+              - 1
+              name: conv2d_5
+              padding: valid
+              strides: *id002
+              trainable: true
+              use_bias: true
+          name: sequential_1
+        keras_version: 2.3.0-tf
       decoder_model_arch:
-
-  policy_model_arch:
-  critic_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: Conv2D
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              data_format: channels_last
+              dilation_rate: !!python/tuple
+              - 1
+              - 1
+              dtype: float32
+              filters: 384
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              kernel_size: &id001 !!python/tuple
+              - 1
+              - 1
+              name: conv2d_6
+              padding: valid
+              strides: *id001
+              trainable: true
+              use_bias: true
+          name: sequential_2
+        keras_version: 2.3.0-tf
+      policy_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: PolicyPerScaleConv2D
+            config:
+              activation: relu
+              filters: 16
+              kernel_size: &id001 !!python/tuple
+              - 2
+              - 2
+              n_scales: 2
+              padding: valid
+              pool_padding: valid
+              pool_size: *id001
+              pool_strides: *id001
+              strides: !!python/tuple
+              - 1
+              - 1
+          - class_name: Dense
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense_2
+              trainable: true
+              units: 200
+              use_bias: true
+          - class_name: Dense
+            config:
+              activation: tanh
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense_3
+              trainable: true
+              units: 2
+              use_bias: true
+          name: sequential_4
+        keras_version: 2.3.0-tf
+      critic_model_arch:
+        backend: tensorflow
+        class_name: Sequential
+        config:
+          layers:
+          - class_name: CriticPerScaleConv2D
+            config:
+              activation: relu
+              filters: 16
+              kernel_size: &id001 !!python/tuple
+              - 2
+              - 2
+              n_scales: 2
+              padding: valid
+              pool_padding: valid
+              pool_size: *id001
+              pool_strides: *id001
+              strides: !!python/tuple
+              - 1
+              - 1
+          - class_name: Dense
+            config:
+              activation: relu
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense
+              trainable: true
+              units: 200
+              use_bias: true
+          - class_name: Dense
+            config:
+              activation: linear
+              activity_regularizer: null
+              bias_constraint: null
+              bias_initializer:
+                class_name: Zeros
+                config: {}
+              bias_regularizer: null
+              dtype: float32
+              kernel_constraint: null
+              kernel_initializer:
+                class_name: GlorotUniform
+                config:
+                  seed: null
+              kernel_regularizer: null
+              name: dense_1
+              trainable: true
+              units: 1
+              use_bias: true
+          name: sequential_3
+        keras_version: 2.3.0-tf
 
 
 hydra:
