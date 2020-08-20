@@ -1,0 +1,71 @@
+import hydra
+from procedure import Procedure
+import os
+import tensorflow as tf
+
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+
+@hydra.main(config_path='../config/', config_name='default.yaml')
+def main(cfg):
+    experiment(cfg)
+
+
+def experiment(cfg):
+    print(cfg.pretty(), end="\n\n\n")
+    agent_conf = cfg.agent
+    buffer_conf = cfg.buffer
+    simulation_conf = cfg.simulation
+    procedure_conf = cfg.procedure
+    experiment_conf = cfg.experiment
+    with Procedure(agent_conf, buffer_conf, simulation_conf, procedure_conf) as procedure:
+        n_episode_batch = experiment_conf.n_episodes // simulation_conf.n
+        for episode_batch in range(n_episode_batch):
+            policy = (episode_batch + 1) % experiment_conf.policy_every == 0
+            critic = (episode_batch + 1) % experiment_conf.critic_every == 0
+            encoders = (episode_batch + 1) % experiment_conf.encoders_every == 0
+            evaluation = (episode_batch + 1) % experiment_conf.evaluate_every == 0
+            save = (episode_batch + 1) % experiment_conf.save_every == 0
+            record = (episode_batch + 1) % experiment_conf.record_episode_every == 0
+            print_info = (episode_batch + 1) % 10 == 0
+            print("batch {: 5d}\tevaluation:{}\tpolicy:{}\tcritic:{}\tencoders:{}\tsave:{}\trecord:{}".format(
+                episode_batch + 1,
+                evaluation,
+                policy,
+                critic,
+                encoders,
+                save,
+                record,
+            ))
+            procedure.collect_train_and_log(policy=policy, critic=critic, encoders=encoders, evaluation=evaluation)
+            if save:
+                procedure.save()
+            if record:
+                procedure.record(
+                    video_name='./replays/replay_{:05d}'.format(episode_batch),
+                    n_episodes=1,
+                    exploration=False
+                )
+            if print_info:
+                print('n_exploration_episodes  ...  ', procedure.n_exploration_episodes)
+                print('n_evaluation_episodes  ....  ', procedure.n_evaluation_episodes)
+                print('n_transition_gathered  ....  ', procedure.n_transition_gathered)
+                print('n_policy_training  ........  ', procedure.n_policy_training)
+                print('n_critic_training  ........  ', procedure.n_critic_training)
+                print('n_encoders_training  .......  ', procedure.n_encoders_training)
+                print('n_global_training  ........  ', procedure.n_global_training)
+        if not save:
+            procedure.save()
+        if experiment_conf.final_recording:
+            print("Generating final recording (without exploration)")
+            procedure.replay(
+                video_name='./replays/replay_final.mp4',
+                n_episodes=2,
+                exploration=False
+            )
+        print("Experiment finished, hope it worked. Good bye!")
+
+
+if __name__ == "__main__":
+    main()

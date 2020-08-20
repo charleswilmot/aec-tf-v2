@@ -14,6 +14,9 @@ class Head(Shape):
         joints = self.get_objects_in_tree(
             object_type=ObjectType.JOINT
         )
+        shapes = self.get_objects_in_tree(
+            object_type=ObjectType.SHAPE
+        )
         self.left_pan_joint = next(
             s for s in joints
             if s.get_name().startswith("vs_eye_pan_left")
@@ -21,6 +24,14 @@ class Head(Shape):
         self.left_tilt_joint = next(
             s for s in joints
             if s.get_name().startswith("vs_eye_tilt_left")
+        )
+        self.left_cyclo_joint = next(
+            s for s in joints
+            if s.get_name().startswith("vs_eye_cyclo_left")
+        )
+        self.eyeball_left = next(
+            s for s in shapes
+            if s.get_name().startswith("eyeball_left")
         )
         self.right_pan_joint = next(
             s for s in joints
@@ -30,6 +41,17 @@ class Head(Shape):
             s for s in joints
             if s.get_name().startswith("vs_eye_tilt_right")
         )
+        self.right_cyclo_joint = next(
+            s for s in joints
+            if s.get_name().startswith("vs_eye_cyclo_right")
+        )
+        self.eyeball_right = next(
+            s for s in shapes
+            if s.get_name().startswith("eyeball_right")
+        )
+        self._tilt_velocity = 0.0
+        self._pan_velocity = 0.0
+        self._vergence_velocity = 0.0
 
     def get_eye_position(self, eye):
         if eye == 'left':
@@ -40,13 +62,13 @@ class Head(Shape):
             raise ValueError("Incorrect eye name {} must be either left or right".format(eye))
 
     def get_eye_orientation(self, eye):
-        return [-1.57079637, 0.0, 0.0]
+        return [-np.pi / 2, 0.0, np.pi]
 
     def get_eye_parent(self, eye):
         if eye == 'left':
-            return self.left_tilt_joint
+            return self.eyeball_left
         elif eye == 'right':
-            return self.right_tilt_joint
+            return self.eyeball_right
         else:
             raise ValueError("Incorrect eye name {} must be either left or right".format(eye))
 
@@ -55,60 +77,88 @@ class Head(Shape):
         left_tilt_joint_position = self.left_tilt_joint.get_joint_position()
         right_pan_joint_position = self.right_pan_joint.get_joint_position()
         right_tilt_joint_position = self.right_tilt_joint.get_joint_position()
+        cyclo = self.right_cyclo_joint.get_joint_position()
         vergence = deg(left_pan_joint_position - right_pan_joint_position)
         pan = deg(left_pan_joint_position + right_pan_joint_position) / 2
         tilt = deg(left_tilt_joint_position)
-        return np.array([tilt, pan, vergence])
+        return np.array([tilt, pan, vergence, cyclo])
 
     def get_joints_velocities(self):
         left_pan_joint_velocity = self.left_pan_joint.get_joint_velocity()
         left_tilt_joint_velocity = self.left_tilt_joint.get_joint_velocity()
         right_pan_joint_velocity = self.right_pan_joint.get_joint_velocity()
         right_tilt_joint_velocity = self.right_tilt_joint.get_joint_velocity()
+        cyclo = self.right_cyclo_joint.get_joint_velocity()
         vergence = deg(left_pan_joint_velocity - right_pan_joint_velocity)
         pan = deg(left_pan_joint_velocity + right_pan_joint_velocity) / 2
         tilt = deg(left_tilt_joint_velocity)
-        return np.array([tilt, pan, vergence])
+        return np.array([tilt, pan, vergence, cyclo])
 
     def get_joints_forces(self):
         left_pan_joint_force = self.left_pan_joint.get_joint_force()
         left_tilt_joint_force = self.left_tilt_joint.get_joint_force()
         right_pan_joint_force = self.right_pan_joint.get_joint_force()
         right_tilt_joint_force = self.right_tilt_joint.get_joint_force()
+        cyclo = self.right_cyclo_joint.get_joint_force()
         vergence = deg(left_pan_joint_force - right_pan_joint_force)
         pan = deg(left_pan_joint_force + right_pan_joint_force) / 2
         tilt = deg(left_tilt_joint_force)
-        return np.array([tilt, pan, vergence])
+        return np.array([tilt, pan, vergence, cyclo])
 
-    def set_joints_positions(self, tilt, pan, vergence):
-        tilt, pan, vergence = rad(tilt), rad(pan), rad(vergence)
+    def set_joints_positions(self, tilt, pan, vergence, cyclo):
+        tilt, pan, vergence, cyclo = rad(tilt), rad(pan), rad(vergence), rad(cyclo)
         self.left_pan_joint.set_joint_position(pan + vergence / 2)
         self.left_tilt_joint.set_joint_position(tilt)
+        self.left_cyclo_joint.set_joint_position(-cyclo)
         self.right_pan_joint.set_joint_position(pan - vergence / 2)
         self.right_tilt_joint.set_joint_position(tilt)
+        self.right_cyclo_joint.set_joint_position(cyclo)
 
-    def set_joints_velocities(self, tilt, pan, vergence):
-        tilt, pan, vergence = rad(tilt), rad(pan), rad(vergence)
-        self.left_pan_joint.set_joint_velocity(pan + vergence / 2)
-        self.left_tilt_joint.set_joint_velocity(tilt)
-        self.right_pan_joint.set_joint_velocity(pan - vergence / 2)
-        self.right_tilt_joint.set_joint_velocity(tilt)
+    def set_joints_velocities(self, tilt, pan, vergence, cyclo):
+        tilt, pan, vergence, cyclo = rad(tilt), rad(pan), rad(vergence), rad(cyclo)
+        self.left_pan_joint.set_joint_target_velocity(pan + vergence / 2)
+        self.left_tilt_joint.set_joint_target_velocity(tilt)
+        self.left_cyclo_joint.set_joint_target_velocity(-cyclo)
+        self.right_pan_joint.set_joint_target_velocity(pan - vergence / 2)
+        self.right_tilt_joint.set_joint_target_velocity(tilt)
+        self.right_cyclo_joint.set_joint_target_velocity(cyclo)
 
-    def set_action(self, tilt_acceleration, pan_acceleration, vergence_velocity):
+    def set_action(self, tilt_acceleration, pan_acceleration, vergence_velocity, cyclo_velocity):
         self._tilt_velocity += tilt_acceleration
         self._pan_velocity += pan_acceleration
         self._vergence_velocity = vergence_velocity
+        self._cyclo_velocity = cyclo_velocity
         self.set_joints_velocities(
             self._tilt_velocity,
             self._pan_velocity,
-            self._vergence_velocity
+            self._vergence_velocity,
+            self._cyclo_velocity,
         )
 
-    def reset(self, tilt=0, pan=0, vergence=0):
+    def reset(self, tilt=0.0, pan=0.0, vergence=0.0, cyclo=0.0):
         self._tilt_velocity = 0.0
         self._pan_velocity = 0.0
         self._vergence_velocity = 0.0
-        self.set_joints_positions(tilt, pan, vergence)
+        self._cyclo_velocity = 0.0
+        self.set_joints_positions(tilt, pan, vergence, cyclo)
+
+    def set_control_loop_enabled(self, bool):
+        self.left_pan_joint.set_control_loop_enabled(bool)
+        self.left_tilt_joint.set_control_loop_enabled(bool)
+        self.right_pan_joint.set_control_loop_enabled(bool)
+        self.right_tilt_joint.set_control_loop_enabled(bool)
+
+    def set_motor_enabled(self, bool):
+        self.left_pan_joint.set_motor_enabled(bool)
+        self.left_tilt_joint.set_motor_enabled(bool)
+        self.right_pan_joint.set_motor_enabled(bool)
+        self.right_tilt_joint.set_motor_enabled(bool)
+
+    def set_motor_locked_at_zero_velocity(self, bool):
+        self.left_pan_joint.set_motor_locked_at_zero_velocity(bool)
+        self.left_tilt_joint.set_motor_locked_at_zero_velocity(bool)
+        self.right_pan_joint.set_motor_locked_at_zero_velocity(bool)
+        self.right_tilt_joint.set_motor_locked_at_zero_velocity(bool)
 
 
 class Screen(Shape):

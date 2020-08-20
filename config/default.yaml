@@ -1,21 +1,3 @@
-agent:
-  policy_learning_rate: 1e-3
-  critic_learning_rate: 1e-3
-  encoder_learning_rate: 1e-3
-  n_simulations: ${simulation.n}
-  action_scaling:
-    - 1.0
-    - 1.0
-    - 1.0
-  exploration:
-    stddev: 1.0
-    autotune_scale: 0.5
-    success_rate_estimator_speed: 0.1
-
-  policy_model_arch:
-  critic_model_arch:
-  encoder_model_arch:
-
 buffer:
   size: 10000
 
@@ -34,11 +16,51 @@ experiment:
   n_episodes: 100000
   policy_every: 2
   critic_every: 1
-  forward_every: 1
+  encoders_every: 1
   evaluate_every: 20
   record_episode_every: 1000
   save_every: 100
   final_recording: True
+
+agent:
+  policy_learning_rate: 1e-3
+  critic_learning_rate: 1e-3
+  encoder_learning_rate: 1e-3
+  n_simulations: ${simulation.n}
+  action_scaling:
+    - 1.0
+    - 1.0
+    - 1.0
+  exploration:
+    n: 1
+    stddev: 1.0
+    autotune_scale: 0.5
+    success_rate_estimator_speed: 0.1
+
+  scales:
+    - name: fine
+      resolution: 32
+      view_angle: 9
+    - name: coarse
+      resolution: 32
+      view_angle: 27
+
+  pathways:
+    - name: pavro
+      joints:
+        - vergence
+      encoder_model_arch:
+      decoder_model_arch:
+
+    - name: magno
+      joints:
+        - tilt
+        - pan
+      encoder_model_arch:
+      decoder_model_arch:
+
+  policy_model_arch:
+  critic_model_arch:
 
 
 hydra:

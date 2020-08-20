@@ -183,7 +183,6 @@ class SimulationConsumer(SimulationConsumerAbstract):
         super().__init__(process_io, scene, gui)
         self._shapes = defaultdict(list)
         self._stateful_shape_list = []
-        self._arm_list = []
         self._state_buffer = None
         self._cams = {}
         self._screens = {}
@@ -250,6 +249,14 @@ class SimulationConsumer(SimulationConsumerAbstract):
             self.uniform_motion_screen.episode_reset(start_distance,
                 depth_speed, angular_speed, direction, texture_id, preinit)
 
+    def episode_reset_head(self, vergence=None):
+        if self.head is None:
+            raise ValueError("No head in the simulation")
+        else:
+            if vergence is None:
+                vergence = np.random.uniform(low=0, high=8)
+            self.head.reset(vergence=vergence)
+
     def move_uniform_motion_screen(self):
         if self.uniform_motion_screen is None:
             raise ValueError("No uniform motion screens in the simulation")
@@ -265,7 +272,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
             vision_sensor = VisionSensor.create(
                 resolution=resolution,
                 position=position,
-                orientation=orientation,
+                orientation=np.array(orientation) + np.array([0, 0, np.pi]),
                 view_angle=view_angle,
                 far_clipping_plane=100.0,
                 render_mode=RenderMode.OPENGL,
@@ -293,100 +300,39 @@ class SimulationConsumer(SimulationConsumerAbstract):
             right = self.add_camera('right', resolution, view_angle)
             self.scales[id] = (left, right)
 
-    @communicate_return_value
-    def get_state(self):
-        n = self._n_joints
-        if self._state_buffer is None:
-            n_reg = self.get_n_registers()
-            size = 3 * n + n_reg
-            self._state_buffer = np.zeros(shape=size, dtype=np.float32)
-            self._state_mean = np.zeros(shape=size, dtype=np.float32)
-            self._state_std = np.zeros(shape=size, dtype=np.float32)
-            self._state_mean[3 * n:] = 0.5
-            # scaling with values measured from random movements
-            pos_std = [1.6, 1.3, 1.6, 1.3, 2.2, 1.7, 2.3]
-            spe_std = [1.1, 1.2, 1.4, 1.3, 2.4, 1.7, 2.1]
-            for_std = [91, 94, 43, 67, 12, 8.7, 2.3]
-            reg_std = [0.5 for i in range(n_reg)]
-            self._state_std[0 * n:1 * n] = np.tile(pos_std, n // 7)
-            self._state_std[1 * n:2 * n] = np.tile(spe_std, n // 7)
-            self._state_std[2 * n:3 * n] = np.tile(for_std, n // 7)
-            self._state_std[3 * n:] = reg_std
-        self._state_buffer[0 * n:1 * n] = self.get_joint_positions()
-        self._state_buffer[1 * n:2 * n] = self.get_joint_velocities()
-        self._state_buffer[2 * n:3 * n] = self.get_joint_forces()
-        self._state_buffer[3 * n:] = self.get_stateful_objects_states()
-        # STATE NORMALIZATION:
-        self._state_buffer -= self._state_mean
-        self._state_buffer /= self._state_std
-        return self._state_buffer
+    def delete_scale(self, id):
+        raise NotImplementedError("TODO")
 
-    @communicate_return_value
-    def get_joint_positions(self):
-        last = 0
-        next = 0
-        for arm, joint_count in zip(self._arm_list, self._arm_joints_count):
-            next += joint_count
-            self._arm_joints_positions_buffer[last:next] = \
-                arm.get_joint_positions()
-            last = next
-        return self._arm_joints_positions_buffer
-
-    @communicate_return_value
-    def get_joint_velocities(self):
-        last = 0
-        next = 0
-        for arm, joint_count in zip(self._arm_list, self._arm_joints_count):
-            next += joint_count
-            self._arm_joints_velocities_buffer[last:next] = \
-                arm.get_joint_velocities()
-            last = next
-        return self._arm_joints_velocities_buffer
-
-    def set_joint_target_velocities(self, velocities):
-        last = 0
-        next = 0
-        for arm, joint_count in zip(self._arm_list, self._arm_joints_count):
-            next += joint_count
-            arm.set_joint_target_velocities(velocities[last:next])
-            last = next
-
-    @communicate_return_value
-    def apply_action(self, actions):
-        velocities = actions * self._upper_velocity_limits
-        self.set_joint_target_velocities(velocities)
+    def apply_action(self, action):
+        tilt_acceleration, pan_acceleration, vergence_velocity, cyclo_velocity = action
+        self.head.set_action(tilt_acceleration, pan_acceleration, vergence_velocity, cyclo_velocity)
         self.step_sim()
-        return self.get_data()
+
+    def get_joint_errors(self):
+        Y_EYES_DISTANCE = 0.034
+        screen_distance = self.uniform_motion_screen.distance
+        screen_vergence = deg(2 * np.arctan2(Y_EYES_DISTANCE, screen_distance))
+        screen_tilt_speed, screen_pan_speed = self.uniform_motion_screen.tilt_pan_speed
+        _, _, eyes_vergence = self.head.get_joints_positions()
+        eyes_tilt_speed, eyes_pan_speed, _ = self.head.get_joints_velocities()
+        vergence_error = eyes_vergence - screen_vergence
+        tilt_error = eyes_tilt_speed - screen_tilt_speed
+        pan_error = eyes_pan_speed - screen_pan_speed
+        return tilt_error, pan_error, vergence_error
 
     def set_control_loop_enabled(self, bool):
-        for arm in self._arm_list:
-            arm.set_control_loop_enabled(bool)
+        self.head.set_control_loop_enabled(bool)
+
+    def set_motor_enabled(self, bool):
+        self.head.set_motor_enabled(bool)
 
     def set_motor_locked_at_zero_velocity(self, bool):
-        for arm in self._arm_list:
-            arm.set_motor_locked_at_zero_velocity(bool)
-
-    @communicate_return_value
-    def get_joint_forces(self):
-        last = 0
-        next = 0
-        for arm, joint_count in zip(self._arm_list, self._arm_joints_count):
-            next += joint_count
-            self._arm_joints_torques_buffer[last:next] = \
-                arm.get_joint_forces()
-            last = next
-        return self._arm_joints_torques_buffer
-
-    def set_joint_forces(self, forces):
-        last = 0
-        next = 0
-        for arm, joint_count in zip(self._arm_list, self._arm_joints_count):
-            next += joint_count
-            arm.set_joint_forces(forces[last:next])
-            last = next
+        self.head.set_motor_locked_at_zero_velocity(bool)
 
     def step_sim(self):
         self._pyrep.step()
+        if self.uniform_motion_screen is not None:
+            self.uniform_motion_screen.move()
 
     def start_sim(self):
         self._pyrep.start()
@@ -482,6 +428,7 @@ class SimulationPool:
         self._producers = [
             SimulationProducer(scene, gui=i in guis) for i in range(size)
         ]
+        self.n = size
         self._active_producers_indices = list(range(size))
         self._distribute_args_mode = False
         self.wait_consumer_ready()
@@ -516,7 +463,7 @@ class SimulationPool:
 
 if __name__ == '__main__':
     def test_1():
-        simulation = SimulationProducer(gui=True)
+        simulation = SimulationProducer(gui=False)
         simulation.start_sim()
         simulation.step_sim()
         simulation.add_background("ny_times_square")
@@ -524,7 +471,7 @@ if __name__ == '__main__':
         simulation.add_scale("fine", (32, 32), 2.0)
         simulation.add_scale("coarse", (32, 32), 6.0)
         simulation.step_sim()
-        N = 100
+        N = 1000
         t0 = time.time()
         for i in range(N):
             vision = simulation.get_vision()
@@ -551,4 +498,47 @@ if __name__ == '__main__':
                 simulation.step_sim()
         simulation.stop_sim()
 
-    test_2()
+    def test_3():
+        import matplotlib.pyplot as plt
+        plt.ion()
+        fig = plt.figure()
+        ax0 = fig.add_subplot(121)
+        ax1 = fig.add_subplot(122)
+        simulation = SimulationProducer(gui=True)
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        simulation.add_scale("fine", (32, 32), 9.0)
+        simulation.add_scale("coarse", (320, 320), 27.0)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.step_sim()
+        vision = simulation.get_vision() # block
+        im0 = ax0.imshow((127.5 + 127.5 * vision["coarse"][..., :3]).astype(np.uint8))
+        im1 = ax1.imshow((127.5 + 127.5 * vision["coarse"][..., 3:]).astype(np.uint8))
+        plt.show()
+        for i in range(10):
+            print(i)
+            simulation.episode_reset_uniform_motion_screen()
+            simulation.episode_reset_head()
+            for j in range(10):
+                vision = simulation.get_vision() # block
+                im0.set_data((127.5 + 127.5 * vision["coarse"][..., :3]).astype(np.uint8))
+                im1.set_data((127.5 + 127.5 * vision["coarse"][..., 3:]).astype(np.uint8))
+                fig.canvas.flush_events()
+                simulation.apply_action(np.random.uniform(low=-1, high=1, size=4) * np.array([0, 0, 0, 5]))
+        simulation.get_vision() # block
+        simulation.stop_sim()
+        plt.close(fig)
+
+    def open_env():
+        simulation = SimulationProducer(gui=True)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        # simulation.add_scale("fine", (32, 32), 9.0)
+        simulation.add_scale("coarse", (32, 32), 27.0)
+        while True:
+            simulation.step_sim()
+
+    test_3()

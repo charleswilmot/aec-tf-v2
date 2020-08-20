@@ -132,23 +132,23 @@ class Agent(object):
                 padding='VALID',
             ) for scale_name, frame in frame_by_scale.items()
         }
+        raise NotImplementedError("Warning: error here")
         return {
             scale_name: tf.reduce_mean(
-                (patches - reconstructions) ** 2,
+                (patches_by_scale[scale_name] - reconstructions_by_scale[scale_name]) ** 2,
                 axis=[1, 2, 3, 4],
-            ) for (scale_name, patches), (_, reconstructions) in
-            zip(patches_by_scale.items(), reconstructions_by_scale.items())
+            ) for scale_name in patches_by_scale
         }
+
+    @tf.function
+    def get_encoder_loss(self, frame_by_scale, pathway_name):
+        loss_by_scale = self.get_encoder_loss_by_scale(frame_by_scale, pathway_name)
+        return sum(loss_by_scale.values())
 
     @tf.function
     def train_encoders(self, frame_by_scale, pathway_name):
         with tf.GradientTape() as tape:
-            loss_by_scale = self.get_encoder_loss_by_scale(frame_by_scale, pathway_name)
-            total_loss_by_scale = {
-                scale_name: tf.reduce_sum(scale_loss)
-                for scale_name, scale_loss in loss_by_scale.items()
-            }
-            total_loss = sum(total_loss_by_scale.values())
+            total_loss = tf.reduce_sum(self.get_encoder_loss(frame_by_scale, pathway_name))
             vars = [model.variables for model in self.models[pathway_name]["encoder_models"].values()] + \
                    [model.variables for model in self.models[pathway_name]["decoder_models"].values()]
             grads = tape.gradient(total_loss, vars)
@@ -182,7 +182,7 @@ class Agent(object):
         losses = {}
         if encoders:
             encoders_loss = self.train_encoders(frame_by_scale, pathway_name)
-            losses["forward"] = forward_loss
+            losses["encoders"] = encoders_loss
         if critic:
             critic_loss = self.train_critic(frame_by_scale, actions, targets, pathway_name)
             losses["critic"] = critic_loss
