@@ -1,8 +1,8 @@
 buffer:
-  size: 10000
+  size: 5000
 
 simulation:
-  n: 40
+  n: 20
   guis:
     -
 
@@ -10,7 +10,35 @@ procedure:
   episode_length: 10
   batch_size: 256
   updates_per_sample: 8
-  log_freq: 1
+  action_scaling:
+    - 1.125
+    - 1.125
+    - 1.125
+    - 0.125
+  reward_scaling: 200
+
+
+experiment:
+  n_episodes: 200000
+  policy_every: 2
+  policy_after: 0
+  critic_every: 1
+  encoders_every: 1
+  evaluate_every: 10
+  record_episode_every: 20
+  save_every: 100
+  final_recording: True
+
+agent:
+  policy_learning_rate: 1e-4
+  critic_learning_rate: 1e-3
+  encoder_learning_rate: 1e-3
+  n_simulations: ${simulation.n}
+  exploration:
+    n: 1
+    stddev: 0.25
+    autotune_scale: 0.5
+    success_rate_estimator_speed: 0.1
   scales:
     - name: fine
       resolution: 32
@@ -18,33 +46,6 @@ procedure:
     - name: coarse
       resolution: 32
       view_angle: 27
-
-
-experiment:
-  n_episodes: 100000
-  policy_every: 2
-  critic_every: 1
-  encoders_every: 1
-  evaluate_every: 20
-  record_episode_every: 1000
-  save_every: 100
-  final_recording: True
-
-agent:
-  policy_learning_rate: 1e-3
-  critic_learning_rate: 1e-3
-  encoder_learning_rate: 1e-3
-  n_simulations: ${simulation.n}
-  action_scaling:
-    - 1.0
-    - 1.0
-    - 1.0
-  exploration:
-    n: 1
-    stddev: 1.0
-    autotune_scale: 0.5
-    success_rate_estimator_speed: 0.1
-
   pathways:
     - name: pavro
       joints:
@@ -65,23 +66,23 @@ agent:
                 config: {}
               bias_regularizer: null
               data_format: channels_last
-              dilation_rate: &id001 !!python/tuple
+              dilation_rate:
               - 1
               - 1
               dtype: float32
-              filters: 16
+              filters: 96
               kernel_constraint: null
               kernel_initializer:
                 class_name: GlorotUniform
                 config:
                   seed: null
               kernel_regularizer: null
-              kernel_size: !!python/tuple
+              kernel_size:
               - 8
               - 8
               name: conv2d_4
               padding: valid
-              strides: !!python/tuple
+              strides:
               - 4
               - 4
               trainable: true
@@ -96,21 +97,25 @@ agent:
                 config: {}
               bias_regularizer: null
               data_format: channels_last
-              dilation_rate: *id001
+              dilation_rate:
+                - 1
+                - 1
               dtype: float32
-              filters: 16
+              filters: 24
               kernel_constraint: null
               kernel_initializer:
                 class_name: GlorotUniform
                 config:
                   seed: null
               kernel_regularizer: null
-              kernel_size: &id002 !!python/tuple
+              kernel_size:
               - 1
               - 1
               name: conv2d_5
               padding: valid
-              strides: *id002
+              strides:
+              - 1
+              - 1
               trainable: true
               use_bias: true
           name: sequential_1
@@ -122,7 +127,7 @@ agent:
           layers:
           - class_name: Conv2D
             config:
-              activation: relu
+              activation: linear
               activity_regularizer: null
               bias_constraint: null
               bias_initializer:
@@ -130,23 +135,25 @@ agent:
                 config: {}
               bias_regularizer: null
               data_format: channels_last
-              dilation_rate: !!python/tuple
+              dilation_rate:
               - 1
               - 1
               dtype: float32
-              filters: 384
+              filters: ${decoder_out_size:${agent.pathways.0.encoder_model_arch.config.layers.0.config.kernel_size.0},${agent.pathways.0.encoder_model_arch.config.layers.0.config.kernel_size.1},6}
               kernel_constraint: null
               kernel_initializer:
                 class_name: GlorotUniform
                 config:
                   seed: null
               kernel_regularizer: null
-              kernel_size: &id001 !!python/tuple
+              kernel_size:
               - 1
               - 1
               name: conv2d_6
               padding: valid
-              strides: *id001
+              strides:
+              - 1
+              - 1
               trainable: true
               use_bias: true
           name: sequential_2
@@ -158,22 +165,26 @@ agent:
           layers:
           - class_name: PolicyPerScaleConv2D
             config:
-              activation: relu
-              filters: 16
-              kernel_size: &id001 !!python/tuple
+              activation: tanh
+              filters: 64
+              kernel_size:
               - 2
               - 2
               n_scales: 2
               padding: valid
               pool_padding: valid
-              pool_size: *id001
-              pool_strides: *id001
-              strides: !!python/tuple
+              pool_size:
+              - 2
+              - 2
+              pool_strides:
+              - 2
+              - 2
+              strides:
               - 1
               - 1
           - class_name: Dense
             config:
-              activation: relu
+              activation: downscale_100_tanh
               activity_regularizer: null
               bias_constraint: null
               bias_initializer:
@@ -189,26 +200,6 @@ agent:
               kernel_regularizer: null
               name: dense_2
               trainable: true
-              units: 200
-              use_bias: true
-          - class_name: Dense
-            config:
-              activation: tanh
-              activity_regularizer: null
-              bias_constraint: null
-              bias_initializer:
-                class_name: Zeros
-                config: {}
-              bias_regularizer: null
-              dtype: float32
-              kernel_constraint: null
-              kernel_initializer:
-                class_name: GlorotUniform
-                config:
-                  seed: null
-              kernel_regularizer: null
-              name: dense_3
-              trainable: true
               units: 2
               use_bias: true
           name: sequential_4
@@ -221,16 +212,20 @@ agent:
           - class_name: CriticPerScaleConv2D
             config:
               activation: relu
-              filters: 16
-              kernel_size: &id001 !!python/tuple
+              filters: 32
+              kernel_size:
               - 2
               - 2
               n_scales: 2
               padding: valid
               pool_padding: valid
-              pool_size: *id001
-              pool_strides: *id001
-              strides: !!python/tuple
+              pool_size:
+              - 2
+              - 2
+              pool_strides:
+              - 2
+              - 2
+              strides:
               - 1
               - 1
           - class_name: Dense
@@ -295,23 +290,23 @@ agent:
                 config: {}
               bias_regularizer: null
               data_format: channels_last
-              dilation_rate: &id001 !!python/tuple
+              dilation_rate:
               - 1
               - 1
               dtype: float32
-              filters: 16
+              filters: 192
               kernel_constraint: null
               kernel_initializer:
                 class_name: GlorotUniform
                 config:
                   seed: null
               kernel_regularizer: null
-              kernel_size: !!python/tuple
+              kernel_size:
               - 8
               - 8
               name: conv2d_4
               padding: valid
-              strides: !!python/tuple
+              strides:
               - 4
               - 4
               trainable: true
@@ -326,21 +321,25 @@ agent:
                 config: {}
               bias_regularizer: null
               data_format: channels_last
-              dilation_rate: *id001
+              dilation_rate:
+              - 1
+              - 1
               dtype: float32
-              filters: 16
+              filters: 48
               kernel_constraint: null
               kernel_initializer:
                 class_name: GlorotUniform
                 config:
                   seed: null
               kernel_regularizer: null
-              kernel_size: &id002 !!python/tuple
+              kernel_size:
               - 1
               - 1
               name: conv2d_5
               padding: valid
-              strides: *id002
+              strides:
+              - 1
+              - 1
               trainable: true
               use_bias: true
           name: sequential_1
@@ -352,7 +351,7 @@ agent:
           layers:
           - class_name: Conv2D
             config:
-              activation: relu
+              activation: linear
               activity_regularizer: null
               bias_constraint: null
               bias_initializer:
@@ -360,23 +359,25 @@ agent:
                 config: {}
               bias_regularizer: null
               data_format: channels_last
-              dilation_rate: !!python/tuple
+              dilation_rate:
               - 1
               - 1
               dtype: float32
-              filters: 384
+              filters: ${decoder_out_size:${agent.pathways.1.encoder_model_arch.config.layers.0.config.kernel_size.0},${agent.pathways.1.encoder_model_arch.config.layers.0.config.kernel_size.1},12}
               kernel_constraint: null
               kernel_initializer:
                 class_name: GlorotUniform
                 config:
                   seed: null
               kernel_regularizer: null
-              kernel_size: &id001 !!python/tuple
+              kernel_size:
               - 1
               - 1
               name: conv2d_6
               padding: valid
-              strides: *id001
+              strides:
+              - 1
+              - 1
               trainable: true
               use_bias: true
           name: sequential_2
@@ -389,21 +390,25 @@ agent:
           - class_name: PolicyPerScaleConv2D
             config:
               activation: relu
-              filters: 16
-              kernel_size: &id001 !!python/tuple
+              filters: 64
+              kernel_size:
               - 2
               - 2
               n_scales: 2
               padding: valid
               pool_padding: valid
-              pool_size: *id001
-              pool_strides: *id001
-              strides: !!python/tuple
+              pool_size:
+              - 2
+              - 2
+              pool_strides:
+              - 2
+              - 2
+              strides:
               - 1
               - 1
           - class_name: Dense
             config:
-              activation: relu
+              activation: downscale_100_tanh
               activity_regularizer: null
               bias_constraint: null
               bias_initializer:
@@ -419,26 +424,6 @@ agent:
               kernel_regularizer: null
               name: dense_2
               trainable: true
-              units: 200
-              use_bias: true
-          - class_name: Dense
-            config:
-              activation: tanh
-              activity_regularizer: null
-              bias_constraint: null
-              bias_initializer:
-                class_name: Zeros
-                config: {}
-              bias_regularizer: null
-              dtype: float32
-              kernel_constraint: null
-              kernel_initializer:
-                class_name: GlorotUniform
-                config:
-                  seed: null
-              kernel_regularizer: null
-              name: dense_3
-              trainable: true
               units: 2
               use_bias: true
           name: sequential_4
@@ -451,16 +436,20 @@ agent:
           - class_name: CriticPerScaleConv2D
             config:
               activation: relu
-              filters: 16
-              kernel_size: &id001 !!python/tuple
+              filters: 64
+              kernel_size:
               - 2
               - 2
               n_scales: 2
               padding: valid
               pool_padding: valid
-              pool_size: *id001
-              pool_strides: *id001
-              strides: !!python/tuple
+              pool_size:
+              - 2
+              - 2
+              pool_strides:
+              - 2
+              - 2
+              strides:
               - 1
               - 1
           - class_name: Dense

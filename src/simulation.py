@@ -13,7 +13,11 @@ import time
 
 
 MODEL_PATH = os.environ["COPPELIASIM_MODEL_PATH"]
+Y_EYES_DISTANCE = 0.034
 
+
+def distance_to_vergence(distance):
+    return - np.rad2deg(2 * np.arctan2(Y_EYES_DISTANCE, distance))
 
 class SimulationConsumerFailed(Exception):
     def __init__(self, consumer_exception, consumer_traceback):
@@ -133,7 +137,7 @@ class SimulationConsumerAbstract(mp.Process):
         self._pyrep.launch(
             self._scene,
             headless=not self._gui,
-            write_coppeliasim_stdout_to_file=False
+            write_coppeliasim_stdout_to_file=True
         )
         self._process_io["simulaton_ready"].set()
         self._main_loop()
@@ -254,8 +258,11 @@ class SimulationConsumer(SimulationConsumerAbstract):
             raise ValueError("No head in the simulation")
         else:
             if vergence is None:
-                vergence = np.random.uniform(low=0, high=8)
+                distance = np.random.uniform(low=0.5, high=5)
+                vergence = distance_to_vergence(distance)
             self.head.reset(vergence=vergence)
+            # for i in range(10):
+            self._pyrep.step()
 
     def move_uniform_motion_screen(self):
         if self.uniform_motion_screen is None:
@@ -272,7 +279,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
             vision_sensor = VisionSensor.create(
                 resolution=resolution,
                 position=position,
-                orientation=np.array(orientation) + np.array([0, 0, np.pi]),
+                orientation=orientation,
                 view_angle=view_angle,
                 far_clipping_plane=100.0,
                 render_mode=RenderMode.OPENGL,
@@ -281,6 +288,10 @@ class SimulationConsumer(SimulationConsumerAbstract):
             cam_id = vision_sensor.get_handle()
             self._cams[cam_id] = vision_sensor
             return cam_id
+
+    def delete_camera(self, cam_id):
+        self._cams[cam_id].remove()
+        self._cams.pop(cam_id)
 
     @communicate_return_value
     def get_vision(self):
@@ -296,29 +307,46 @@ class SimulationConsumer(SimulationConsumerAbstract):
         if id in self.scales:
             raise ValueError("Scale with id {} is already present".format(id))
         else:
+            self.head.set_joints_velocities(0, 0, 0, 0)
+            self.head.set_joints_positions(0, 0, 0, 0)
+            # self._pyrep.step() # step to make sure that the eyes reached the target position of 0 (might be useless)
             left = self.add_camera('left', resolution, view_angle)
             right = self.add_camera('right', resolution, view_angle)
             self.scales[id] = (left, right)
 
     def delete_scale(self, id):
-        raise NotImplementedError("TODO")
+        if id in self.scales:
+            left, right = self.scales[id]
+            self.delete_camera(left)
+            self.delete_camera(right)
+            self.scales.pop(id)
+        else:
+            raise ValueError("Scale with id {} does not exist".format(id))
 
     def apply_action(self, action):
         tilt_acceleration, pan_acceleration, vergence_velocity, cyclo_velocity = action
         self.head.set_action(tilt_acceleration, pan_acceleration, vergence_velocity, cyclo_velocity)
         self.step_sim()
 
-    def get_joint_errors(self):
-        Y_EYES_DISTANCE = 0.034
+    @communicate_return_value
+    def get_joints_errors(self):
         screen_distance = self.uniform_motion_screen.distance
-        screen_vergence = deg(2 * np.arctan2(Y_EYES_DISTANCE, screen_distance))
+        screen_vergence = distance_to_vergence(screen_distance)
         screen_tilt_speed, screen_pan_speed = self.uniform_motion_screen.tilt_pan_speed
-        _, _, eyes_vergence = self.head.get_joints_positions()
-        eyes_tilt_speed, eyes_pan_speed, _ = self.head.get_joints_velocities()
+        _, _, eyes_vergence, _ = self.head.get_joints_positions()
+        eyes_tilt_speed, eyes_pan_speed, _, _ = self.head.get_joints_velocities()
         vergence_error = eyes_vergence - screen_vergence
         tilt_error = eyes_tilt_speed - screen_tilt_speed
         pan_error = eyes_pan_speed - screen_pan_speed
         return tilt_error, pan_error, vergence_error
+
+    @communicate_return_value
+    def get_joints_velocities(self):
+        return self.head.get_joints_velocities()
+
+    @communicate_return_value
+    def get_joints_positions(self):
+        return self.head.get_joints_positions()
 
     def set_control_loop_enabled(self, bool):
         self.head.set_control_loop_enabled(bool)
@@ -525,7 +553,40 @@ if __name__ == '__main__':
                 im0.set_data((127.5 + 127.5 * vision["coarse"][..., :3]).astype(np.uint8))
                 im1.set_data((127.5 + 127.5 * vision["coarse"][..., 3:]).astype(np.uint8))
                 fig.canvas.flush_events()
-                simulation.apply_action(np.random.uniform(low=-1, high=1, size=4) * np.array([0, 0, 0, 5]))
+                simulation.apply_action(np.random.uniform(low=-1, high=1, size=4) * np.array([1.125, 1.125, 1.125, 0.125]))
+                print(simulation.get_joints_positions(), simulation.get_joints_velocities())
+        simulation.get_vision() # block
+        simulation.stop_sim()
+        plt.close(fig)
+
+    def test_4():
+        import matplotlib.pyplot as plt
+        plt.ion()
+        fig = plt.figure()
+        ax0 = fig.add_subplot(121)
+        ax1 = fig.add_subplot(122)
+        simulation = SimulationProducer(gui=True)
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        simulation.add_scale("coarse", (320, 320), 27.0)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.step_sim()
+        vision = simulation.get_vision() # block
+        im0 = ax0.imshow((127.5 + 127.5 * vision["coarse"][..., :3]).astype(np.uint8))
+        im1 = ax1.imshow((127.5 + 127.5 * vision["coarse"][..., 3:]).astype(np.uint8))
+        plt.show()
+        for i in range(10):
+            print(i)
+            simulation.episode_reset_uniform_motion_screen()
+            simulation.episode_reset_head()
+            for j in range(10):
+                vision = simulation.get_vision() # block
+                im0.set_data((127.5 + 127.5 * vision["coarse"][..., :3]).astype(np.uint8))
+                im1.set_data((127.5 + 127.5 * vision["coarse"][..., 3:]).astype(np.uint8))
+                fig.canvas.flush_events()
+                simulation.apply_action([0, 0, 3, 0])
+                print(simulation.get_joints_positions(), simulation.get_joints_velocities())
         simulation.get_vision() # block
         simulation.stop_sim()
         plt.close(fig)
@@ -541,4 +602,4 @@ if __name__ == '__main__':
         while True:
             simulation.step_sim()
 
-    test_3()
+    test_4()

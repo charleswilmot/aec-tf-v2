@@ -9,6 +9,32 @@ import os
 from collections import OrderedDict
 from tensorboard.plugins.hparams import api as hp
 from imageio import get_writer
+from PIL import Image
+from PIL import ImageFont
+from PIL import ImageDraw
+
+
+def add_text(frame, **lines):
+    font_size = 10
+    image = Image.fromarray(frame)
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+    for line_name, string in lines.items():
+        h = int(line_name[5:]) + 1
+        draw.text((font_size // 4, h * (font_size + font_size // 2)), string, (255, 255, 255), font=font)
+    return np.array(image)
+
+
+def text_frame(height, width, **lines):
+    font_size = 10
+    image = Image.fromarray(np.zeros((height, width, 3), dtype=np.uint8))
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+    for line_name, (string1, string2) in lines.items():
+        h = int(line_name[5:]) + 1
+        draw.text((font_size // 4, h * (font_size + font_size // 2)), string1, (255, 255, 255), font=font)
+        draw.text((font_size // 4 + width // 2, h * (font_size + font_size // 2)), string2, (255, 255, 255), font=font)
+    return np.array(image)
 
 
 def get_snr_db(signal, noise, axis=1):
@@ -27,6 +53,20 @@ def get_snr_db(signal, noise, axis=1):
     return 20 * (rms_signal_db - rms_noise_db)
 
 
+anaglyph_matrix = np.array([
+    [0.299, 0    , 0    ],
+    [0.587, 0    , 0    ],
+    [0.114, 0    , 0    ],
+    [0    , 0.299, 0.299],
+    [0    , 0.587, 0.587],
+    [0    , 0.114, 0.114],
+    ])
+
+
+def anaglyph(left_right):
+    return np.matmul((left_right + 1) * 127.5, anaglyph_matrix).astype(np.uint8)
+
+
 class Procedure(object):
     def __init__(self, agent_conf, buffer_conf, simulation_conf, procedure_conf):
         #   PROCEDURE CONF
@@ -34,7 +74,8 @@ class Procedure(object):
         self.updates_per_sample = procedure_conf.updates_per_sample
         self.batch_size = procedure_conf.batch_size
         self.n_simulations = simulation_conf.n
-        self.log_freq = procedure_conf.log_freq
+        self.action_scaling = np.array(list(procedure_conf.action_scaling))[np.newaxis]
+        self.reward_scaling = procedure_conf.reward_scaling
         #    HPARAMS
         self._hparams = OrderedDict([
             ("policy_LR", agent_conf.policy_learning_rate),
@@ -49,6 +90,7 @@ class Procedure(object):
         #   OBJECTS
         self.agent = Agent(**agent_conf)
         self.buffer = Buffer(**buffer_conf)
+        self.scale_names = [scale.name for scale in agent_conf.scales]
         #   SIMULATION POOL
         guis = list(simulation_conf.guis)
         self.simulation_pool = SimulationPool(
@@ -58,36 +100,38 @@ class Procedure(object):
         )
         self.simulation_pool.add_background("ny_times_square")
         self.simulation_pool.add_head()
-        for scale in procedure_conf.scales:
+        for scale in agent_conf.scales:
             self.simulation_pool.add_scale(scale.name, (scale.resolution, scale.resolution), scale.view_angle)
         self.simulation_pool.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
         self.simulation_pool.start_sim()
         self.simulation_pool.step_sim()
         print("[procedure] all simulation started")
-
+        fake_frame_by_scale_pavro = self.get_vision()
+        fake_frame_by_scale_magno = self.merge_before_after(fake_frame_by_scale_pavro, fake_frame_by_scale_pavro)
+        self.agent.create_all_variables(fake_frame_by_scale_pavro, fake_frame_by_scale_magno)
         #   DEFINING DATA BUFFERS
         # training
         pavro_dtype = np.dtype([
-            (scale.name, (scale.resolution, scale.resolution, 6), np.float32)
-            for scale in procedure_conf.scales
+            (scale.name, np.float32, (scale.resolution, scale.resolution, 6))
+            for scale in agent_conf.scales
         ])
-        pavro_dtype = np.dtype([
-            (scale.name, (scale.resolution, scale.resolution, 12), np.float32)
-            for scale in procedure_conf.scales
+        magno_dtype = np.dtype([
+            (scale.name, np.float32, (scale.resolution, scale.resolution, 12))
+            for scale in agent_conf.scales
         ])
         n_pavro_joints = len(agent_conf.pathways[0].joints)
         n_magno_joints = len(agent_conf.pathways[1].joints)
         self._train_data_type = np.dtype([
             ("pavro_vision", pavro_dtype),
             ("magno_vision", magno_dtype),
-            ("pavro_noisy_actions", (n_pavro_joints,), np.float32),
-            ("magno_noisy_actions", (n_magno_joints,), np.float32),
+            ("pavro_noisy_actions", np.float32, (n_pavro_joints,)),
+            ("magno_noisy_actions", np.float32, (n_magno_joints,)),
             ("pavro_critic_targets", np.float32),
             ("magno_critic_targets", np.float32),
             ("pavro_recerr", np.float32),
             ("magno_recerr", np.float32),
-            ("pavro_return_estimates", np.float32)
-            ("magno_return_estimates", np.float32)
+            ("pavro_return_estimates", np.float32),
+            ("magno_return_estimates", np.float32),
         ])
         self._train_data_buffer = np.zeros(
             shape=(self.n_simulations, self.episode_length),
@@ -97,8 +141,8 @@ class Procedure(object):
         self._evaluation_data_type = np.dtype([
             ("pavro_vision", pavro_dtype),
             ("magno_vision", magno_dtype),
-            ("pavro_pure_actions", (n_pavro_joints,), np.float32),
-            ("magno_pure_actions", (n_magno_joints,), np.float32),
+            ("pavro_pure_actions", np.float32, (n_pavro_joints,)),
+            ("magno_pure_actions", np.float32, (n_magno_joints,)),
             ("pavro_recerr", np.float32),
             ("magno_recerr", np.float32),
             ("pavro_critic_targets", np.float32),
@@ -133,10 +177,10 @@ class Procedure(object):
             "training/critic_pavro_loss", dtype=tf.float32)
         self.tb["training"]["critic"]["magno_loss"] = Mean(
             "training/critic_magno_loss", dtype=tf.float32)
-        self.tb["training"]["encoder"] = {}
-        self.tb["training"]["encoder"]["pavro_loss"] = Mean(
+        self.tb["training"]["encoders"] = {}
+        self.tb["training"]["encoders"]["pavro_loss"] = Mean(
             "training/encoder_pavro_loss", dtype=tf.float32)
-        self.tb["training"]["encoder"]["magno_loss"] = Mean(
+        self.tb["training"]["encoders"]["magno_loss"] = Mean(
             "training/encoder_magno_loss", dtype=tf.float32)
         self.tb["collection"] = {}
         self.tb["collection"]["exploration"] = {}
@@ -148,31 +192,31 @@ class Procedure(object):
         self.tb["collection"]["exploration"]["total_episode_reward_pavro"] = Mean(
             "collection/exploration_total_episode_reward_pavro", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["total_episode_reward_pavro"] = Mean(
-            "collection/exploration_total_episode_reward_pavro", dtype=tf.float32)
+            "collection/evaluation_total_episode_reward_pavro", dtype=tf.float32)
         self.tb["collection"]["exploration"]["total_episode_reward_magno"] = Mean(
             "collection/exploration_total_episode_reward_magno", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["total_episode_reward_magno"] = Mean(
-            "collection/exploration_total_episode_reward_magno", dtype=tf.float32)
+            "collection/evaluation_total_episode_reward_magno", dtype=tf.float32)
         self.tb["collection"]["exploration"]["recerr_pavro"] = Mean(
             "collection/exploration_recerr_pavro", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["recerr_pavro"] = Mean(
-            "collection/exploration_recerr_pavro", dtype=tf.float32)
+            "collection/evaluation_recerr_pavro", dtype=tf.float32)
         self.tb["collection"]["exploration"]["recerr_magno"] = Mean(
             "collection/exploration_recerr_magno", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["recerr_magno"] = Mean(
-            "collection/exploration_recerr_magno", dtype=tf.float32)
+            "collection/evaluation_recerr_magno", dtype=tf.float32)
         self.tb["collection"]["exploration"]["final_vergence_error"] = Mean(
             "collection/exploration_final_vergence_error", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["final_vergence_error"] = Mean(
-            "collection/exploration_final_vergence_error", dtype=tf.float32)
+            "collection/evaluation_final_vergence_error", dtype=tf.float32)
         self.tb["collection"]["exploration"]["final_tilt_error"] = Mean(
             "collection/exploration_final_tilt_error", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["final_tilt_error"] = Mean(
-            "collection/exploration_final_tilt_error", dtype=tf.float32)
+            "collection/evaluation_final_tilt_error", dtype=tf.float32)
         self.tb["collection"]["exploration"]["final_pan_error"] = Mean(
             "collection/exploration_final_pan_error", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["final_pan_error"] = Mean(
-            "collection/exploration_final_pan_error", dtype=tf.float32)
+            "collection/evaluation_final_pan_error", dtype=tf.float32)
         self.tb["collection"]["exploration"]["critic_snr_pavro"] = Mean(
             "collection/exploration_critic_snr_pavro_db", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["critic_snr_pavro"] = Mean(
@@ -215,11 +259,6 @@ class Procedure(object):
                 "critic",
                 self.n_critic_training
             )
-            self.log_metrics(
-                "training",
-                "next_critic",
-                self.n_critic_training
-            )
         if policy:
             self.log_metrics(
                 "training",
@@ -229,7 +268,7 @@ class Procedure(object):
         if encoders:
             self.log_metrics(
                 "training",
-                "encoder",
+                "encoders",
                 self.n_encoder_training
             )
 
@@ -265,27 +304,39 @@ class Procedure(object):
             texture_ids=None, preinit=False):
         with self.simulation_pool.distribute_args():
             self.simulation_pool.episode_reset_uniform_motion_screen(
-                start_distances,
-                depth_speeds,
-                angular_speeds,
-                directions,
-                texture_ids,
+                [None] * self.simulation_pool.n if start_distances is None else start_distances,
+                [None] * self.simulation_pool.n if depth_speeds is None else depth_speeds,
+                [None] * self.simulation_pool.n if angular_speeds is None else angular_speeds,
+                [None] * self.simulation_pool.n if directions is None else directions,
+                [None] * self.simulation_pool.n if texture_ids is None else texture_ids,
                 preinit=[preinit] * self.simulation_pool.n
+            )
+
+    def episode_reset_head(self, vergence=None):
+        with self.simulation_pool.distribute_args():
+            self.simulation_pool.episode_reset_head(
+                [None] * self.simulation_pool.n if vergence is None else vergence
             )
 
     def get_vision(self):
         vision_list = self.simulation_pool.get_vision()
         return {
-            scale_name: np.vstack([v[scale_name] for v in vision_list], axis=0)
+            scale_name: np.stack([v[scale_name] for v in vision_list], axis=0)
             for scale_name in vision_list[0]
         }
 
     def apply_action(self, actions):
         with self.simulation_pool.distribute_args():
-            self.simulation_pool.apply_action(actions)
+            self.simulation_pool.apply_action(actions * self.action_scaling)
 
-    def get_joint_errors(self):
-        return tuple(zip(self.simulation_pool.get_joint_errors()))
+    def get_joints_errors(self):
+        return tuple(zip(*self.simulation_pool.get_joints_errors()))
+
+    def get_joints_velocities(self):
+        return tuple(zip(*self.simulation_pool.get_joints_velocities()))
+
+    def get_joints_positions(self):
+        return tuple(zip(*self.simulation_pool.get_joints_positions()))
 
     def merge_before_after(self, before, after):
         return {
@@ -295,10 +346,94 @@ class Procedure(object):
             ) for scale_name in before
         }
 
+    def record(self, exploration=False, n_episodes=1, video_name='replay', resolution=(320, 240)):
+        half_size = (resolution[1] // 2, resolution[0] // 2)
+        black_frame = np.zeros(shape=(resolution[1], resolution[0] // 2, 3), dtype=np.uint8)
+        video_names = [video_name + "_{:02d}.mp4".format(i) for i in range(self.n_simulations)]
+        writers = [get_writer(name, fps=25) for name in video_names]
+        self.simulation_pool.add_scale("record", resolution, 90.0)
+        self.episode_reset_uniform_motion_screen(preinit=True)
+        self.episode_reset_head()
+        vision_after = self.get_vision() # preinit frames
+        left_rights = vision_after.pop("record")
+        self.apply_action(np.zeros((self.n_simulations, 4)))
+        prev_pavro_recerr = np.zeros(self.n_simulations)
+        prev_magno_recerr = np.zeros(self.n_simulations)
+        for iteration in range(self.episode_length):
+            vision_before = vision_after
+            vision_after = self.get_vision()
+            left_rights = vision_after.pop("record")
+            pavro_vision = vision_after
+            magno_vision = self.merge_before_after(vision_before, vision_after)
+            tilt_error, pan_error, vergence_error = self.get_joints_errors()
+            tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
+            tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
+            pavro_recerr = self.agent.get_encoder_loss(pavro_vision, "pavro")
+            magno_recerr = self.agent.get_encoder_loss(magno_vision, "magno")
+            if exploration:
+                _, pavro_noisy_actions = self.agent.get_actions(pavro_vision, "pavro", exploration=True)
+                _, magno_noisy_actions = self.agent.get_actions(magno_vision, "magno", exploration=True)
+                actions = np.concatenate([magno_noisy_actions, pavro_noisy_actions], axis=-1)
+            else:
+                pavro_pure_actions = self.agent.get_actions(pavro_vision, "pavro")
+                magno_pure_actions = self.agent.get_actions(magno_vision, "magno")
+                actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
+            self.apply_action(actions)
+            for i, (writer, left_right) in enumerate(zip(writers, left_rights)):
+                ana = anaglyph(left_right)
+                # top = ((left_right[::2, ::2, :3] + 1) * 127.5).astype(np.uint8)
+                # bottom = ((left_right[::2, ::2, 3:] + 1) * 127.5).astype(np.uint8)
+                # top_bottom = np.concatenate([top, bottom], axis=0)
+                text_0 = text_frame(height=resolution[1], width=resolution[1],
+                    line_0 =("episode", "{: 2d}".format(i + 1)),
+                    line_1 =("iteration", "{: 2d}/{: 2d}".format(iteration + 1, self.episode_length)),
+                    line_2 =("tilt error", "{:.2f}".format(tilt_error[i])),
+                    line_3 =("pan error", "{:.2f}".format(pan_error[i])),
+                    line_4 =("vergence error", "{:.2f}".format(vergence_error[i])),
+                    line_5 =("tilt position", "{:.2f}".format(tilt_pos[i])),
+                    line_6 =("pan position", "{:.2f}".format(pan_pos[i])),
+                    line_7 =("vergence position", "{:.2f}".format(vergence_pos[i])),
+                    line_8 =("cyclo position", "{:.2f}".format(cyclo_pos[i])),
+                    line_9 =("tilt speed", "{:.2f}".format(tilt_speed[i])),
+                    line_10=("pan speed", "{:.2f}".format(pan_speed[i])),
+                    line_11=("vergence speed", "{:.2f}".format(vergence_speed[i])),
+                    line_12=("cyclo speed", "{:.2f}".format(cyclo_speed[i])),
+                    line_13=("pavro recerr", "{:.2f} - {:.2f} = {:.2f}".format(
+                        prev_pavro_recerr[i] * self.reward_scaling,
+                        pavro_recerr[i] * self.reward_scaling,
+                        (prev_pavro_recerr[i] - pavro_recerr[i]) * self.reward_scaling)),
+                    line_14=("magno recerr", "{:.2f} - {:.2f} = {:.2f}".format(
+                        prev_magno_recerr[i] * self.reward_scaling,
+                        magno_recerr[i] * self.reward_scaling,
+                        (prev_magno_recerr[i] - magno_recerr[i]) * self.reward_scaling)),
+                )
+                text_1 = text_frame(height=resolution[1], width=resolution[1],
+                    line_0=("action tilt", "{:.2f}".format(actions[i, 0])),
+                    line_1=("action pan", "{:.2f}".format(actions[i, 1])),
+                    line_2=("action vergence", "{:.2f}".format(actions[i, 2])),
+                    line_3=("action cyclo", "{:.2f}".format(actions[i, 3])),
+                )
+                # frame = np.concatenate([text_0, text_1, ana, top_bottom], axis=1)
+                frame = np.concatenate([text_0, text_1, ana], axis=1)
+                writer.append_data(frame)
+            prev_pavro_recerr = pavro_recerr
+            prev_magno_recerr = magno_recerr
+        self.simulation_pool.delete_scale("record")
+        for writer in writers:
+            writer.close()
+        with open("file_list.txt", "w") as f:
+            for name in video_names:
+                f.write("file '{}'\n".format(name))
+        os.system("ffmpeg -hide_banner -loglevel panic -f concat -safe 0 -i file_list.txt -c copy {}.mp4".format(video_name))
+        # os.remove("file_list.txt")
+        for name in video_names:
+            os.remove(name)
+
     def collect_data(self):
         """Performs one episode of exploration, places data in the buffer"""
         time_start = time.time()
         self.episode_reset_uniform_motion_screen(preinit=True)
+        self.episode_reset_head()
         vision_after = self.get_vision()
         self.simulation_pool.step_sim()
         for iteration in range(self.episode_length):
@@ -324,12 +459,14 @@ class Procedure(object):
             self._train_data_buffer[:, iteration]["magno_recerr"] = magno_recerr
             self.apply_action(noisy_actions)
         # COMPUTE TARGET
-        self._train_data_buffer[:, :-1]["pavro_critic_targets"] = \
-            self._train_data_buffer[:, :-1]["pavro_recerr"] - \
+        self._train_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
+            self._train_data_buffer[:, :-1]["pavro_recerr"] -
             self._train_data_buffer[:,  1:]["pavro_recerr"]
-        self._train_data_buffer[:, :-1]["magno_critic_targets"] = \
-            self._train_data_buffer[:, :-1]["magno_recerr"] - \
+        )
+        self._train_data_buffer[:, :-1]["magno_critic_targets"] = self.reward_scaling * (
+            self._train_data_buffer[:, :-1]["magno_recerr"] -
             self._train_data_buffer[:,  1:]["magno_recerr"]
+        )
         # ADD TO BUFFER
         buffer_data = self._train_data_buffer[:, :-1].flatten()
         self.buffer.integrate(buffer_data)
@@ -337,7 +474,7 @@ class Procedure(object):
         self.n_exploration_episodes += self.n_simulations
         time_stop = time.time()
         # LOG METRICS
-        final_tilt_error, final_pan_error, final_vergence_error = self.get_joint_errors()
+        final_tilt_error, final_pan_error, final_vergence_error = self.get_joints_errors()
         self.accumulate_log_data(
             pavro_return_estimates=self._train_data_buffer[:, 1:-1]["pavro_return_estimates"],
             pavro_critic_targets=self._train_data_buffer[:, 1:-1]["pavro_critic_targets"],
@@ -356,6 +493,7 @@ class Procedure(object):
         """Performs one episode of exploration, places data in the buffer"""
         time_start = time.time()
         self.episode_reset_uniform_motion_screen(preinit=True)
+        self.episode_reset_head()
         vision_after = self.get_vision()
         self.simulation_pool.step_sim()
         for iteration in range(self.episode_length):
@@ -371,23 +509,25 @@ class Procedure(object):
             for scale_name in pavro_vision:
                 self._evaluation_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
                 self._evaluation_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
-            self._evaluation_data_buffer[:, iteration]["pure_actions"] = pure_actions
-            # not necessary for training but useful for logging:
+            self._evaluation_data_buffer[:, iteration]["pavro_pure_actions"] = pavro_pure_actions
+            self._evaluation_data_buffer[:, iteration]["magno_pure_actions"] = magno_pure_actions
             self._evaluation_data_buffer[:, iteration]["pavro_recerr"] = pavro_recerr
             self._evaluation_data_buffer[:, iteration]["magno_recerr"] = magno_recerr
             self.apply_action(pure_actions)
         # COMPUTE TARGET
-        self._evaluation_data_buffer[:, :-1]["pavro_critic_targets"] = \
-            self._evaluation_data_buffer[:, :-1]["pavro_recerr"] - \
+        self._evaluation_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
+            self._evaluation_data_buffer[:, :-1]["pavro_recerr"] -
             self._evaluation_data_buffer[:,  1:]["pavro_recerr"]
-        self._evaluation_data_buffer[:, :-1]["magno_critic_targets"] = \
-            self._evaluation_data_buffer[:, :-1]["magno_recerr"] - \
+        )
+        self._evaluation_data_buffer[:, :-1]["magno_critic_targets"] = self.reward_scaling * (
+            self._evaluation_data_buffer[:, :-1]["magno_recerr"] -
             self._evaluation_data_buffer[:,  1:]["magno_recerr"]
+        )
         # COUNTER
         self.n_evaluation_episodes += self.n_simulations
         time_stop = time.time()
         # LOG METRICS
-        final_tilt_error, final_pan_error, final_vergence_error = self.get_joint_errors()
+        final_tilt_error, final_pan_error, final_vergence_error = self.get_joints_errors()
         self.accumulate_log_data(
             pavro_return_estimates=self._evaluation_data_buffer[:, 1:-1]["pavro_return_estimates"],
             pavro_critic_targets=self._evaluation_data_buffer[:, 1:-1]["pavro_critic_targets"],
@@ -399,7 +539,7 @@ class Procedure(object):
             final_tilt_error=final_tilt_error,
             final_pan_error=final_pan_error,
             time=time_stop - time_start,
-            exploration=True,
+            exploration=False,
         )
 
     def accumulate_log_data(self,
@@ -420,19 +560,19 @@ class Procedure(object):
         tb["total_episode_reward_magno"](np.mean(np.sum(magno_critic_targets, axis=-1)))
         tb["recerr_pavro"](np.mean(pavro_recerr))
         tb["recerr_magno"](np.mean(magno_recerr))
-        tb["final_vergence_error"](np.mean(final_vergence_error))
-        tb["final_tilt_error"](np.mean(final_tilt_error))
-        tb["final_pan_error"](np.mean(final_pan_error))
+        tb["final_vergence_error"](np.mean(np.abs(final_vergence_error)))
+        tb["final_tilt_error"](np.mean(np.abs(final_tilt_error)))
+        tb["final_pan_error"](np.mean(np.abs(final_pan_error)))
         #
         signal = pavro_critic_targets
         noise = pavro_critic_targets - pavro_return_estimates
         critic_snr_pavro = get_snr_db(signal, noise)
-        tb["critic_snr"](np.mean(critic_snr_pavro))
+        tb["critic_snr_pavro"](np.mean(critic_snr_pavro))
         #
         signal = magno_critic_targets
         noise = magno_critic_targets - magno_return_estimates
         critic_snr_magno = get_snr_db(signal, noise)
-        tb["critic_snr"](np.mean(critic_snr_magno))
+        tb["critic_snr_magno"](np.mean(critic_snr_magno))
         #
 
     def train(self, policy=True, critic=True, encoders=True):
@@ -441,7 +581,7 @@ class Procedure(object):
         for pathway_name in ["pavro", "magno"]:
             frame_by_scale = {
                 scale_name: data["{}_vision".format(pathway_name)][scale_name]
-                for scale_name in self.scale_names # todo
+                for scale_name in self.scale_names
             }
             losses = self.agent.train(
                 frame_by_scale,
@@ -477,6 +617,6 @@ class Procedure(object):
         self.collect_and_train(policy=policy, critic=critic, encoders=encoders)
         if evaluation:
             self.evaluate()
-        if self.n_global_training % self.log_freq == 0:
+        if evaluation:
             self.log_summaries(exploration=True, evaluation=evaluation,
                 policy=policy, critic=critic, encoders=encoders)

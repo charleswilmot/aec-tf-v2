@@ -93,8 +93,7 @@ class PolicyPerScaleConv2D(keras.layers.Layer):
         ) for i in range(n_scales)]
         self.concat = keras.layers.Concatenate()
 
-    def call(self, args):
-        encodings_by_scale, actions = args
+    def call(self, encodings_by_scale):
         visions = [
             conv(encodings_by_scale[scale_name])
             for conv, scale_name in zip(self.convs, sorted(encodings_by_scale))
@@ -123,9 +122,25 @@ class PolicyPerScaleConv2D(keras.layers.Layer):
         }
 
 
+def downscale_10_tanh(x):
+    return tf.tanh(x / 10)
+
+
+def downscale_100_tanh(x):
+    return tf.tanh(x / 100)
+
+
+def downscale_500_tanh(x):
+    return tf.tanh(x / 500)
+
+
+
 custom_objects = {
     "CriticPerScaleConv2D": CriticPerScaleConv2D,
     "PolicyPerScaleConv2D": PolicyPerScaleConv2D,
+    "downscale_10_tanh": downscale_10_tanh,
+    "downscale_100_tanh": downscale_100_tanh,
+    "downscale_500_tanh": downscale_500_tanh,
 }
 
 
@@ -212,7 +227,7 @@ if __name__ == '__main__':
             pool_strides=(2, 2),
             pool_padding='valid',
         ),
-        keras.layers.Dense(200, activation='relu'),
+        keras.layers.Dense(200, activation=downscale_10_tanh),
         keras.layers.Dense(2, activation='tanh'),
     ])
 

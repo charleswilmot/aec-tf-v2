@@ -9,13 +9,14 @@ import sys
 from collections import defaultdict
 import json
 import time
+import custom_interpolations
 
 
 PASSWORD = None
 REMOTE_HOST_NAME = 'otto'
 
 
-@hydra.main(config_path='../config/general/default.yaml', strict=True)
+@hydra.main(config_path='../config/', config_name='default.yaml')
 def start_job(cfg):
         experiment_path = os.getcwd()
         pickle_conf_path = experiment_path + '/cfg.json'
@@ -60,11 +61,12 @@ def get_n_free_gpus(node):
     return total - used
 
 
-def node_list_availability(node_list, min_cpus=10, min_free_mem=20000):
+def node_list_availability(node_list, min_cpus=14, min_free_mem=20000):
     for node in node_list:
         n_free_cpus = get_n_free_cpus(node)
         free_mem = get_free_mem(node)
-        if n_free_cpus >= min_cpus and free_mem >= min_free_mem:
+        n_free_gpus = get_n_free_gpus(node)
+        if n_free_cpus >= min_cpus and free_mem >= min_free_mem and n_free_gpus >= 1:
             print(node, end=" -> ")
             return True
     return False
@@ -72,25 +74,19 @@ def node_list_availability(node_list, min_cpus=10, min_free_mem=20000):
 
 def get_partition_reservation():
     # OPTION 1
-    print("checking OPTION 1 ... ", end="")
-    if node_list_availability(["xavier", "iceman", "jubilee", "frost", "beast", "cyclops", "shadowcat"]):
-        print("free space available, sending job")
-        return "x-men", None
-    print("no free space")
-    # OPTION 2
     print("checking OPTION 2 ... ", end="")
     if node_list_availability(["turbine", "vane"]):
         print("free space available, sending job")
         return "sleuths", None
     print("no free space")
-    # OPTION 3
+    # OPTION 2
     print("checking OPTION 3 ... ", end="")
     if node_list_availability(["jetski"]):
         print("free space available, sending job")
         return "sleuths", "triesch-shared"
     print("no free space")
-    print("No space available on the cluster. Defaulting to x-men OPTION 1")
-    return "x-men", None
+    print("No space available on the cluster. Defaulting to turbine/vane OPTION 1")
+    return "sleuths", None
 
 
 def node_to_n_jobs():
@@ -160,8 +156,8 @@ def ssh_command(cmd):
         export COPPELIASIM_ROOT=/home/aecgroup/aecdata/Software/CoppeliaSim_4.0.0_rev4 ;
         export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$COPPELIASIM_ROOT ;
         export QT_QPA_PLATFORM_PLUGIN_PATH=$COPPELIASIM_ROOT ;
-        export COPPELIASIM_MODEL_PATH=/home/wilmot/Documents/code/coppelia_sim_inverse_model/3d_models/ ;
-        cd Documents/code/coppelia_sim_inverse_model/src ;
+        export COPPELIASIM_MODEL_PATH=/home/wilmot/Documents/code/aec-tf-v2/models/ ;
+        cd /home/wilmot/Documents/code/aec-tf-v2/src ;
         {})""".format(cmd))
     for line in stdout.readlines():
         print(line, end="")
