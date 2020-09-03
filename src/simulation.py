@@ -121,7 +121,7 @@ class SimulationConsumerAbstract(mp.Process):
     _id = 0
     """This class sole purpose is to better 'hide' all interprocess related code
     from the user."""
-    def __init__(self, process_io, scene="../models/empty_scene.ttt", gui=False):
+    def __init__(self, process_io, scene=MODEL_PATH + "/empty_scene.ttt", gui=False):
         super().__init__(
             name="simulation_consumer_{}".format(SimulationConsumerAbstract._id)
         )
@@ -183,7 +183,7 @@ class SimulationConsumerAbstract(mp.Process):
 
 @default_dont_communicate_return
 class SimulationConsumer(SimulationConsumerAbstract):
-    def __init__(self, process_io, scene="../models/empty_scene.ttt", gui=False):
+    def __init__(self, process_io, scene=MODEL_PATH + "/empty_scene.ttt", gui=False):
         super().__init__(process_io, scene, gui)
         self._shapes = defaultdict(list)
         self._stateful_shape_list = []
@@ -253,14 +253,16 @@ class SimulationConsumer(SimulationConsumerAbstract):
             self.uniform_motion_screen.episode_reset(start_distance,
                 depth_speed, angular_speed, direction, texture_id, preinit)
 
-    def episode_reset_head(self, vergence=None):
+    def episode_reset_head(self, vergence=None, cyclo=None):
         if self.head is None:
             raise ValueError("No head in the simulation")
         else:
             if vergence is None:
                 distance = np.random.uniform(low=0.5, high=5)
                 vergence = distance_to_vergence(distance)
-            self.head.reset(vergence=vergence)
+            if cyclo is None:
+                cyclo = 0
+            self.head.reset(vergence=vergence, cyclo=cyclo)
             # for i in range(10):
             self._pyrep.step()
 
@@ -294,14 +296,23 @@ class SimulationConsumer(SimulationConsumerAbstract):
         self._cams.pop(cam_id)
 
     @communicate_return_value
-    def get_vision(self):
-        return {
-            scale_id: np.concatenate([
-                self._cams[left].capture_rgb(),
-                self._cams[right].capture_rgb()
-                ], axis=-1) * 2 - 1
-            for scale_id, (left, right) in self.scales.items()
-        }
+    def get_vision(self, color_scaling=None):
+        if color_scaling is None:
+            return {
+                scale_id: np.concatenate([
+                    self._cams[left].capture_rgb(),
+                    self._cams[right].capture_rgb()
+                    ], axis=-1) * 2 - 1
+                for scale_id, (left, right) in self.scales.items()
+            }
+        else:
+            return {
+                scale_id: np.concatenate([
+                    self._cams[left].capture_rgb(),
+                    self._cams[right].capture_rgb()
+                    ], axis=-1) * color_scaling[scale_id] * 2 - 1
+                for scale_id, (left, right) in self.scales.items()
+            }
 
     def add_scale(self, id, resolution, view_angle):
         if id in self.scales:
@@ -375,7 +386,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
 
 @consumer_to_producer_method_conversion
 class SimulationProducer(object):
-    def __init__(self, scene="../models/empty_scene.ttt", gui=False):
+    def __init__(self, scene=MODEL_PATH + "/empty_scene.ttt", gui=False):
         self._process_io = {}
         self._process_io["must_quit"] = mp.Event()
         self._process_io["simulaton_ready"] = mp.Event()
@@ -452,7 +463,7 @@ class SimulationProducer(object):
 
 @producer_to_pool_method_convertion
 class SimulationPool:
-    def __init__(self, size, scene="../models/empty_scene.ttt", guis=[]):
+    def __init__(self, size, scene=MODEL_PATH + "/empty_scene.ttt", guis=[]):
         self._producers = [
             SimulationProducer(scene, gui=i in guis) for i in range(size)
         ]
@@ -591,6 +602,81 @@ if __name__ == '__main__':
         simulation.stop_sim()
         plt.close(fig)
 
+    def test_5():
+        import matplotlib.pyplot as plt
+        # plt.ion()
+        fig = plt.figure()
+        ax00 = fig.add_subplot(221)
+        ax10 = fig.add_subplot(222)
+        ax01 = fig.add_subplot(223)
+        ax11 = fig.add_subplot(224)
+        simulations = SimulationPool(size=2) # guis=[0, 1]
+        simulations.add_background("ny_times_square")
+        simulations.add_head()
+        simulations.add_scale("only", (320, 320), 27.0)
+        simulations.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulations.start_sim()
+        simulations.step_sim()
+        simulations.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=0,
+            direction=0,
+            texture_id=0,
+            preinit=False,
+        )
+        simulations.episode_reset_head(vergence=0, cyclo=0)
+        simulations.step_sim()
+        vision = simulations.get_vision() # block
+        im00 = ax00.imshow((0.5 + 0.5 * vision[0]["only"][..., :3]))
+        im10 = ax10.imshow((0.5 + 0.5 * vision[1]["only"][..., :3]))
+
+        # frame01 = np.abs(vision[1]["only"][..., :3] - vision[0]["only"][..., :3])
+        # frame11 = np.abs(vision[1]["only"][..., 3:] - vision[0]["only"][..., 3:])
+        # frame01 /= np.max(frame01, axis=(0, 1))
+        # frame11 /= np.max(frame11, axis=(0, 1))
+
+        # frame01 = vision[1]["only"][..., :3] - vision[0]["only"][..., :3]
+        # frame11 = vision[1]["only"][..., 3:] - vision[0]["only"][..., 3:]
+        # frame01 -= np.min(frame01, axis=(0, 1))
+        # frame11 -= np.min(frame11, axis=(0, 1))
+        # frame01 /= np.max(frame01, axis=(0, 1))
+        # frame11 /= np.max(frame11, axis=(0, 1))
+
+        mean_ratio = np.mean(0.5 + 0.5 * vision[0]["only"], axis=(0, 1)) / np.mean(0.5 + 0.5 * vision[1]["only"], axis=(0, 1))
+        frame = (0.5 + 0.5 * vision[1]["only"]) * mean_ratio
+        frame01 = frame[..., :3]
+        frame11 = frame[..., 3:]
+
+        im01 = ax01.imshow(frame01)
+        im11 = ax11.imshow(frame11)
+        print(vision[0]["only"].shape)
+        print(0.5 + 0.5 * np.mean(vision[0]["only"], axis=(0, 1)))
+        print(0.5 + 0.5 * np.mean(vision[1]["only"], axis=(0, 1)))
+        print((1 + vision[0]["only"]) / (1 + vision[1]["only"]))
+        plt.show()
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.scatter(vision[0]["only"][:, :, 0].flatten(), vision[1]["only"][:, :, 0].flatten(), color='r')
+        ax.scatter(vision[0]["only"][:, :, 1].flatten(), vision[1]["only"][:, :, 1].flatten(), color='g')
+        ax.scatter(vision[0]["only"][:, :, 2].flatten(), vision[1]["only"][:, :, 2].flatten(), color='b')
+        plt.show()
+        # for i in range(10):
+        #     print(i)
+        #     simulations.episode_reset_uniform_motion_screen()
+        #     simulations.episode_reset_head()
+        #     for j in range(10):
+        #         vision = simulations.get_vision() # block
+        #         im0.set_data((127.5 + 127.5 * vision["coarse"][..., :3]).astype(np.uint8))
+        #         im1.set_data((127.5 + 127.5 * vision["coarse"][..., 3:]).astype(np.uint8))
+        #         fig.canvas.flush_events()
+        #         simulations.apply_action(np.random.uniform(low=-1, high=1, size=4) * np.array([1.125, 1.125, 1.125, 0.125]))
+        #         print(simulations.get_joints_positions(), simulations.get_joints_velocities())
+        # simulations.get_vision() # block
+        simulations.stop_sim()
+        plt.close(fig)
+
     def open_env():
         simulation = SimulationProducer(gui=True)
         simulation.start_sim()
@@ -602,4 +688,4 @@ if __name__ == '__main__':
         while True:
             simulation.step_sim()
 
-    test_4()
+    test_5()

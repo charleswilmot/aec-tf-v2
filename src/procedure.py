@@ -1,7 +1,7 @@
 import numpy as np
 from buffer import Buffer
 from agent import Agent
-from simulation import SimulationPool
+from simulation import SimulationPool, distance_to_vergence
 from tensorflow.keras.metrics import Mean
 import tensorflow as tf
 import time
@@ -12,6 +12,14 @@ from imageio import get_writer
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw
+from test_data import TestDataContainer
+
+
+def angle(pan_in_deg, tilt_in_deg):
+    pan = np.deg2rad(pan_in_deg)
+    tilt = np.deg2rad(tilt_in_deg) + 1e-8
+    length = np.sqrt(pan ** 2 + tilt ** 2)
+    return np.arccos(pan / length) * np.sign(tilt)
 
 
 def add_text(frame, **lines):
@@ -76,6 +84,9 @@ class Procedure(object):
         self.n_simulations = simulation_conf.n
         self.action_scaling = np.array(list(procedure_conf.action_scaling))[np.newaxis]
         self.reward_scaling = procedure_conf.reward_scaling
+        self.test_dump_path = "./tests/"
+        self.test_plot_path = "./plots/"
+        self.test_conf = TestDataContainer.load(procedure_conf.test_conf_path)
         #    HPARAMS
         self._hparams = OrderedDict([
             ("policy_LR", agent_conf.policy_learning_rate),
@@ -95,7 +106,6 @@ class Procedure(object):
         guis = list(simulation_conf.guis)
         self.simulation_pool = SimulationPool(
             simulation_conf.n,
-            scene="",
             guis=guis
         )
         self.simulation_pool.add_background("ny_times_square")
@@ -105,6 +115,7 @@ class Procedure(object):
         self.simulation_pool.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
         self.simulation_pool.start_sim()
         self.simulation_pool.step_sim()
+        self.color_scaling = self.get_color_scaling()
         print("[procedure] all simulation started")
         fake_frame_by_scale_pavro = self.get_vision()
         fake_frame_by_scale_magno = self.merge_before_after(fake_frame_by_scale_pavro, fake_frame_by_scale_pavro)
@@ -232,6 +243,8 @@ class Procedure(object):
         # TREE STRUCTURE
         os.makedirs('./replays', exist_ok=True)
         os.makedirs('./visualization_data', exist_ok=True)
+        os.makedirs(self.test_dump_path, exist_ok=True)
+        os.makedirs(self.test_plot_path, exist_ok=True)
 
     def log_metrics(self, key1, key2, step):
         with self.summary_writer.as_default():
@@ -312,18 +325,53 @@ class Procedure(object):
                 preinit=[preinit] * self.simulation_pool.n
             )
 
-    def episode_reset_head(self, vergence=None):
+    def episode_reset_head(self, vergence=None, cyclo=None):
         with self.simulation_pool.distribute_args():
             self.simulation_pool.episode_reset_head(
-                [None] * self.simulation_pool.n if vergence is None else vergence
+                [None] * self.simulation_pool.n if vergence is None else vergence,
+                [None] * self.simulation_pool.n if cyclo is None else cyclo,
             )
 
-    def get_vision(self):
-        vision_list = self.simulation_pool.get_vision()
+    def get_vision(self, color_scaling=None):
+        if color_scaling is None:
+            vision_list = self.simulation_pool.get_vision()
+        else:
+            with self.simulation_pool.distribute_args():
+                vision_list = self.simulation_pool.get_vision(color_scaling=color_scaling)
         return {
             scale_name: np.stack([v[scale_name] for v in vision_list], axis=0)
             for scale_name in vision_list[0]
         }
+
+    def get_color_scaling(self):
+        self.simulation_pool.episode_reset_head(vergence=0, cyclo=0)
+        data = []
+        for texture_id in range(20):
+            self.simulation_pool.episode_reset_uniform_motion_screen(
+                start_distance=2,
+                depth_speed=0,
+                angular_speed=0,
+                direction=0,
+                texture_id=texture_id,
+                preinit=False,
+            )
+            self.simulation_pool.step_sim()
+            vision_list = self.simulation_pool.get_vision()
+            data.append([{
+                scale_id: np.mean(0.5 + 0.5 * vision[scale_id], axis=(0, 1))
+                for scale_id in vision
+            } for vision in vision_list])
+        color_means = [{
+            scale_id: np.mean([
+                stimulus_data[sim_id][scale_id]
+                for stimulus_data in data
+            ], axis=0)
+            for scale_id in vision_list[0]
+        } for sim_id in range(self.n_simulations)]
+        return [{
+            scale_id: color_means[0][scale_id] / scale_mean
+            for scale_id, scale_mean in simulation_color_means.items()
+        } for simulation_color_means in color_means]
 
     def apply_action(self, actions):
         with self.simulation_pool.distribute_args():
@@ -337,6 +385,9 @@ class Procedure(object):
 
     def get_joints_positions(self):
         return tuple(zip(*self.simulation_pool.get_joints_positions()))
+
+    def get_joints_velocities(self):
+        return tuple(zip(*self.simulation_pool.get_joints_velocities()))
 
     def merge_before_after(self, before, after):
         return {
@@ -541,6 +592,96 @@ class Procedure(object):
             time=time_stop - time_start,
             exploration=False,
         )
+        # LOG ACTION HISTOGRAM
+        with self.summary_writer.as_default():
+            tf.summary.histogram(
+                "vergence",
+                self._evaluation_data_buffer["pavro_pure_actions"][..., 0].flatten(),
+                step=self.n_evaluation_episodes
+            )
+            tf.summary.histogram(
+                "cyclo",
+                self._evaluation_data_buffer["pavro_pure_actions"][..., 1].flatten(),
+                step=self.n_evaluation_episodes
+            )
+            tf.summary.histogram(
+                "tilt",
+                self._evaluation_data_buffer["magno_pure_actions"][..., 0].flatten(),
+                step=self.n_evaluation_episodes
+            )
+            tf.summary.histogram(
+                "pan",
+                self._evaluation_data_buffer["magno_pure_actions"][..., 1].flatten(),
+                step=self.n_evaluation_episodes
+            )
+
+    def test(self, test_conf_path=None, dump_path=None, plot_path=None):
+        if test_conf_path is None:
+            test_conf = self.test_conf
+        else:
+            test_conf = TestDataContainer.load(test_conf_path)
+        remaining = len(test_conf)
+        for length in test_conf.get_tests_lengths():
+            print("Testing length {}".format(length))
+            for chunk in test_conf.tests_by_chunks(length, self.n_simulations):
+                chunk_size = len(chunk)
+                remaining -= chunk_size
+                print("new chunk, remaining:", remaining)
+                with self.simulation_pool.specific(list(range(chunk_size))):
+                    conf = chunk["conf"]
+                    angular_speeds_deg = np.sqrt(conf["tilt_error"] ** 2 + conf["pan_error"] ** 2)
+                    angular_speeds = np.deg2rad(angular_speeds_deg)
+                    directions = angle(conf["pan_error"], conf["tilt_error"])
+                    self.episode_reset_uniform_motion_screen(
+                        start_distances=conf["object_distance"],
+                        depth_speeds=[0] * chunk_size,
+                        angular_speeds=angular_speeds,
+                        directions=directions,
+                        texture_ids=conf["stimulus"],
+                        preinit=True,
+                    )
+                    self.episode_reset_head(
+                        vergence=distance_to_vergence(conf["object_distance"]) - conf["vergence_error"],
+                        cyclo=conf["cyclo_pos"],
+                    )
+                    vision_after = self.get_vision(color_scaling=self.color_scaling)
+                    self.simulation_pool.step_sim()
+                    for iteration in range(length):
+                        vision_before = vision_after
+                        vision_after = self.get_vision(color_scaling=self.color_scaling)
+                        pavro_vision = vision_after
+                        magno_vision = self.merge_before_after(vision_before, vision_after)
+                        pavro_pure_actions = self.agent.get_actions(pavro_vision, "pavro")
+                        magno_pure_actions = self.agent.get_actions(magno_vision, "magno")
+                        pure_actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
+                        recerr_pavro = self.agent.get_encoder_loss(pavro_vision, "pavro") # can be done in batch processing mode after the loop
+                        recerr_magno = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
+                        tilt_error, pan_error, vergence_error = self.get_joints_errors()
+                        tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
+                        tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
+                        chunk["result"]["vergence_error"][:, iteration] = vergence_error
+                        chunk["result"]["pan_error"][:, iteration] = pan_error
+                        chunk["result"]["tilt_error"][:, iteration] = tilt_error
+                        chunk["result"]["recerr_magno"][:, iteration] = recerr_magno
+                        chunk["result"]["recerr_pavro"][:, iteration] = recerr_pavro
+                        chunk["result"]["pan_pos"][:, iteration] = pan_pos
+                        chunk["result"]["tilt_pos"][:, iteration] = tilt_pos
+                        chunk["result"]["vergence_pos"][:, iteration] = vergence_pos
+                        chunk["result"]["cyclo_pos"][:, iteration] = cyclo_pos
+                        chunk["result"]["pan_speed"][:, iteration] = pan_speed
+                        chunk["result"]["tilt_speed"][:, iteration] = tilt_speed
+                        chunk["result"]["vergence_speed"][:, iteration] = vergence_speed
+                        chunk["result"]["cyclo_speed"][:, iteration] = cyclo_speed
+                        chunk["result"]["tilt_action"][:, iteration] = pure_actions[:, 0]
+                        chunk["result"]["pan_action"][:, iteration] = pure_actions[:, 1]
+                        chunk["result"]["vergence_action"][:, iteration] = pure_actions[:, 2]
+                        chunk["result"]["cyclo_action"][:, iteration] = pure_actions[:, 3]
+                        self.apply_action(pure_actions)
+        filepath = self.test_dump_path if dump_path is None else dump_path
+        name = "/{}_{:06d}".format(test_conf.name, self.n_exploration_episodes)
+        test_conf.dump(filepath, name=name)
+        path = self.test_plot_path + "/" + name if plot_path is None else plot_path
+        test_conf.plot(path)
 
     def accumulate_log_data(self,
             pavro_return_estimates, pavro_critic_targets, pavro_recerr,

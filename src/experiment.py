@@ -3,6 +3,7 @@ from procedure import Procedure
 import os
 import tensorflow as tf
 import custom_interpolations
+from test_data import TestDataContainer
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -22,12 +23,15 @@ def experiment(cfg):
     experiment_conf = cfg.experiment
     with Procedure(agent_conf, buffer_conf, simulation_conf, procedure_conf) as procedure:
         n_episode_batch = experiment_conf.n_episodes // simulation_conf.n
+        if experiment_conf.test_at_start:
+            procedure.test()
         for episode_batch in range(n_episode_batch):
             policy = (episode_batch + 1) % experiment_conf.policy_every == 0
             policy = policy and procedure.n_exploration_episodes > experiment_conf.policy_after
             critic = (episode_batch + 1) % experiment_conf.critic_every == 0
             encoders = (episode_batch + 1) % experiment_conf.encoders_every == 0
             evaluation = (episode_batch + 1) % experiment_conf.evaluate_every == 0
+            test = (episode_batch + 1) % experiment_conf.test_every == 0
             save = (episode_batch + 1) % experiment_conf.save_every == 0
             record = (episode_batch + 1) % experiment_conf.record_episode_every == 0
             print_info = (episode_batch + 1) % 10 == 0
@@ -51,9 +55,11 @@ def experiment(cfg):
                     n_episodes=1,
                     exploration=True
                 )
-            procedure.collect_train_and_log(policy=policy, critic=critic, encoders=encoders, evaluation=evaluation)
+            if test:
+                procedure.test()
             if save:
                 procedure.save()
+            procedure.collect_train_and_log(policy=policy, critic=critic, encoders=encoders, evaluation=evaluation)
             if print_info:
                 print('n_exploration_episodes  ...  ', procedure.n_exploration_episodes)
                 print('n_evaluation_episodes  ....  ', procedure.n_evaluation_episodes)
@@ -64,6 +70,8 @@ def experiment(cfg):
                 print('n_global_training  ........  ', procedure.n_global_training)
         if not save:
             procedure.save()
+        if not test:
+            procedure.test()
         if experiment_conf.final_recording:
             print("Generating final recording (without exploration)")
             procedure.record(

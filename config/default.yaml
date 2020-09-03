@@ -16,6 +16,7 @@ procedure:
     - 1.125
     - 0.125
   reward_scaling: 200
+  test_conf_path: ${hydra:runtime.cwd}/../config/test_conf/default_at_2m.pkl
 
 
 experiment:
@@ -25,7 +26,9 @@ experiment:
   critic_every: 1
   encoders_every: 1
   evaluate_every: 10
-  record_episode_every: 20
+  test_every: 500
+  test_at_start: False
+  record_episode_every: 100
   save_every: 100
   final_recording: True
 

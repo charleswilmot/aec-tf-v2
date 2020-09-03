@@ -243,7 +243,7 @@ class UniformMotionScreen(Screen):
         if direction is None:
             self.direction = np.random.uniform(0, 2 * np.pi)
         else:
-            self.direction = rad(direction)
+            self.direction = direction
         self.set_texture(texture_id)
         self.set_episode_iteration(-1 if preinit else 0)
 
