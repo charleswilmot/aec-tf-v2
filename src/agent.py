@@ -55,25 +55,9 @@ class Agent(object):
         #   EXPLORATION NOISE
         self.exploration_params = exploration
         self.exploration_stddev = tf.Variable(exploration.stddev, dtype=tf.float32)
-        self.exploration_n = exploration.n
+        self.exploration_prob = exploration.prob
         self.success_rate = None
-        self.autotune_scale = exploration.autotune_scale
-        self.success_rate_estimator_speed = exploration.success_rate_estimator_speed
         self.n_simulations = n_simulations
-        if self.n_simulations != 1:
-            self.stddev_coefs_step = self.autotune_scale ** -(2 / (self.n_simulations - 1))
-            self.histogram_step = self.stddev_coefs_step ** 2
-            self.stddev_coefs = self.stddev_coefs_step ** np.arange(
-                -(self.n_simulations - 1) / 2,
-                1 + (self.n_simulations - 1) / 2,
-                1
-            )
-            self.bins = self.histogram_step ** np.arange(
-                np.floor(np.log(0.0001) / np.log(self.histogram_step)),
-                np.ceil(np.log(2) / np.log(self.histogram_step))
-            )
-            self.mean_reward_sum = np.zeros(len(self.bins) + 1)
-            self.mean_reward_count = np.zeros(len(self.bins) + 1)
         ###
 
     def save_weights(self, path):
@@ -191,7 +175,7 @@ class Agent(object):
             noises = tf.random.truncated_normal(
                 shape=tf.shape(pure_actions),
                 stddev=self.exploration_stddev,
-            )
+            ) * tf.cast(tf.random.uniform(shape=tf.shape(pure_actions)) < self.exploration_prob, tf.float32)
             noisy_actions = tf.clip_by_value(
                 pure_actions + noises,
                 clip_value_min=-1,
@@ -278,30 +262,3 @@ class Agent(object):
             policy_loss = self.train_policy(frame_by_scale, pathway_name)
             losses["policy"] = policy_loss
         return losses
-
-    def register_total_reward(self, rewards):
-        stddevs = self.stddev_coefs * self.exploration_stddev
-        current_bins = np.digitize(stddevs, self.bins)
-        c = self.success_rate_estimator_speed
-        print('current_bins', current_bins)
-        print('rewards', rewards)
-        for bin, reward in zip(current_bins, rewards):
-            self.mean_reward_sum[bin] = reward + (1 - c) * self.mean_reward_sum[bin]
-            self.mean_reward_count[bin] = 1 + (1 - c) * self.mean_reward_count[bin]
-        mean_reward = divide_no_nan(self.mean_reward_sum, self.mean_reward_count, default=-2.0)
-        filtered_mean_reward = np.convolve(
-            mean_reward,
-            self.n_simulations // 4,
-            mode='same'
-        )
-        index = np.argmax(filtered_mean_reward)
-        print('filtered_mean_reward', filtered_mean_reward)
-        print('index', index)
-        if index == 0:
-            best_std = self.bins[0]
-        elif index == len(self.bins):
-            best_std = self.bins[-1]
-        else:
-            best_std = 0.5 * (self.bins[index - 1] + self.bins[index])
-        best_std = c * min(best_std, 1.0) + (1 - c) * self.exploration_stddev.numpy()
-        self.exploration_stddev.assign(best_std)

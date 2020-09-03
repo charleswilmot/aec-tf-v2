@@ -38,10 +38,8 @@ agent:
   encoder_learning_rate: 1e-3
   n_simulations: ${simulation.n}
   exploration:
-    n: 1
-    stddev: 0.25
-    autotune_scale: 0.5
-    success_rate_estimator_speed: 0.1
+    stddev: 0.5
+    prob: 0.1
   scales:
     - name: fine
       resolution: 32
