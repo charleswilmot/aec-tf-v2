@@ -46,16 +46,8 @@ def text_frame(height, width, **lines):
 
 
 def get_snr_db(signal, noise, axis=1):
-    mean_signal = np.mean(signal, axis=axis, keepdims=True)
-    mean_noise = np.mean(noise, axis=axis, keepdims=True)
-    std_signal = np.std(signal - mean_signal, axis=axis)
-    std_noise = np.std(noise - mean_noise, axis=axis)
-    where = std_signal != 0
-    if not where.any():
-        print("WARNING: signal to noise can't be computed (constant signal), returning NaN")
-        return np.nan
-    std_signal = std_signal[where]
-    std_noise = std_noise[where]
+    std_signal = np.std(signal, axis=axis)
+    std_noise = np.std(noise, axis=axis)
     rms_signal_db = np.log10(std_signal)
     rms_noise_db = np.log10(std_noise)
     return 20 * (rms_signal_db - rms_noise_db)
@@ -500,6 +492,8 @@ class Procedure(object):
             noisy_actions = np.concatenate([magno_noisy_actions, pavro_noisy_actions], axis=-1)
             pavro_recerr = self.agent.get_encoder_loss(pavro_vision, "pavro") # can be done in batch processing mode after the loop
             magno_recerr = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
+            pavro_critic = self.agent.get_return_estimates(pavro_vision, pavro_noisy_actions, "pavro") # can be done in batch processing mode after the loop
+            magno_critic = self.agent.get_return_estimates(magno_vision, magno_noisy_actions, "magno") # can be done in batch processing mode after the loop
             for scale_name in pavro_vision:
                 self._train_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
                 self._train_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
@@ -508,6 +502,8 @@ class Procedure(object):
             # not necessary for training but useful for logging:
             self._train_data_buffer[:, iteration]["pavro_recerr"] = pavro_recerr
             self._train_data_buffer[:, iteration]["magno_recerr"] = magno_recerr
+            self._train_data_buffer[:, iteration]["pavro_return_estimates"] = pavro_critic[..., 0]
+            self._train_data_buffer[:, iteration]["magno_return_estimates"] = magno_critic[..., 0]
             self.apply_action(noisy_actions)
         # COMPUTE TARGET
         self._train_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
@@ -527,11 +523,11 @@ class Procedure(object):
         # LOG METRICS
         final_tilt_error, final_pan_error, final_vergence_error = self.get_joints_errors()
         self.accumulate_log_data(
-            pavro_return_estimates=self._train_data_buffer[:, 1:-1]["pavro_return_estimates"],
-            pavro_critic_targets=self._train_data_buffer[:, 1:-1]["pavro_critic_targets"],
+            pavro_return_estimates=self._train_data_buffer[:, :-1]["pavro_return_estimates"],
+            pavro_critic_targets=self._train_data_buffer[:, :-1]["pavro_critic_targets"],
             pavro_recerr=self._train_data_buffer["pavro_recerr"],
-            magno_return_estimates=self._train_data_buffer[:, 1:-1]["magno_return_estimates"],
-            magno_critic_targets=self._train_data_buffer[:, 1:-1]["magno_critic_targets"],
+            magno_return_estimates=self._train_data_buffer[:, :-1]["magno_return_estimates"],
+            magno_critic_targets=self._train_data_buffer[:, :-1]["magno_critic_targets"],
             magno_recerr=self._train_data_buffer["magno_recerr"],
             final_vergence_error=final_vergence_error,
             final_tilt_error=final_tilt_error,
@@ -557,6 +553,8 @@ class Procedure(object):
             pure_actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
             pavro_recerr = self.agent.get_encoder_loss(pavro_vision, "pavro") # can be done in batch processing mode after the loop
             magno_recerr = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
+            pavro_critic = self.agent.get_return_estimates(pavro_vision, pavro_pure_actions, "pavro") # can be done in batch processing mode after the loop
+            magno_critic = self.agent.get_return_estimates(magno_vision, magno_pure_actions, "magno") # can be done in batch processing mode after the loop
             for scale_name in pavro_vision:
                 self._evaluation_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
                 self._evaluation_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
@@ -564,6 +562,8 @@ class Procedure(object):
             self._evaluation_data_buffer[:, iteration]["magno_pure_actions"] = magno_pure_actions
             self._evaluation_data_buffer[:, iteration]["pavro_recerr"] = pavro_recerr
             self._evaluation_data_buffer[:, iteration]["magno_recerr"] = magno_recerr
+            self._evaluation_data_buffer[:, iteration]["pavro_return_estimates"] = pavro_critic[..., 0]
+            self._evaluation_data_buffer[:, iteration]["magno_return_estimates"] = magno_critic[..., 0]
             self.apply_action(pure_actions)
         # COMPUTE TARGET
         self._evaluation_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
@@ -656,6 +656,8 @@ class Procedure(object):
                         pure_actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
                         recerr_pavro = self.agent.get_encoder_loss(pavro_vision, "pavro") # can be done in batch processing mode after the loop
                         recerr_magno = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
+                        critic_pavro = self.agent.get_return_estimates(pavro_vision, pavro_pure_actions, "pavro")
+                        critic_magno = self.agent.get_return_estimates(magno_vision, magno_pure_actions, "magno")
                         tilt_error, pan_error, vergence_error = self.get_joints_errors()
                         tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
                         tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
@@ -664,6 +666,8 @@ class Procedure(object):
                         chunk["result"]["tilt_error"][:, iteration] = tilt_error
                         chunk["result"]["recerr_magno"][:, iteration] = recerr_magno
                         chunk["result"]["recerr_pavro"][:, iteration] = recerr_pavro
+                        chunk["result"]["critic_magno"][:, iteration] = critic_magno[..., 0]
+                        chunk["result"]["critic_pavro"][:, iteration] = critic_pavro[..., 0]
                         chunk["result"]["pan_pos"][:, iteration] = pan_pos
                         chunk["result"]["tilt_pos"][:, iteration] = tilt_pos
                         chunk["result"]["vergence_pos"][:, iteration] = vergence_pos
