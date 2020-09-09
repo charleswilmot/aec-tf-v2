@@ -104,7 +104,14 @@ class Procedure(object):
         self.simulation_pool.add_head()
         for scale in agent_conf.scales:
             self.simulation_pool.add_scale(scale.name, (scale.resolution, scale.resolution), scale.view_angle)
-        self.simulation_pool.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        self.simulation_pool.add_uniform_motion_screen(
+            textures_path=procedure_conf.screen.textures_path,
+            size=procedure_conf.screen.size,
+            min_distance=procedure_conf.screen.min_distance,
+            max_distance=procedure_conf.screen.max_distance,
+            max_depth_speed=procedure_conf.screen.max_depth_speed,
+            max_speed_in_deg=procedure_conf.screen.max_speed_in_deg,
+        )
         self.simulation_pool.start_sim()
         self.simulation_pool.step_sim()
         self.color_scaling = self.get_color_scaling()
