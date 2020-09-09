@@ -3,6 +3,21 @@ import tensorflow.keras as keras
 from tensorflow.python.keras import activations
 
 
+class DenseReconcat(keras.layers.Dense):
+    def __init__(self, *args, reconcat_size, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reconcat_size = reconcat_size
+
+    def call(self, args):
+        to_reconcat = args[..., -self.reconcat_size:]
+        return tf.concat([super.call(args), to_reconcat], axis=-1)
+
+    def get_config(self):
+        ret = super().get_config()
+        ret["reconcat_size"] = self.reconcat_size
+        return ret
+
+
 class CriticPerScaleConv2D(keras.layers.Layer):
     def __init__(self, n_scales, filters, kernel_size, strides, padding='valid', activation=None,
             pool_size=(2, 2), pool_strides=(1, 1), pool_padding='valid'):
@@ -136,6 +151,7 @@ def downscale_500_tanh(x):
 
 
 custom_objects = {
+    "DenseReconcat": DenseReconcat,
     "CriticPerScaleConv2D": CriticPerScaleConv2D,
     "PolicyPerScaleConv2D": PolicyPerScaleConv2D,
     "downscale_10_tanh": downscale_10_tanh,
@@ -211,7 +227,7 @@ if __name__ == '__main__':
             pool_strides=(2, 2),
             pool_padding='valid',
         ),
-        keras.layers.Dense(200, activation='relu'),
+        DenseReconcat(200, reconcat_size=2, activation='relu'),
         keras.layers.Dense(1),
     ])
 
