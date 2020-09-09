@@ -724,7 +724,7 @@ class Procedure(object):
                 scale_name: data["{}_vision".format(pathway_name)][scale_name]
                 for scale_name in self.scale_names
             }
-            losses = self.agent.train(
+            losses, action_grads = self.agent.train(
                 frame_by_scale,
                 data["{}_noisy_actions".format(pathway_name)],
                 data["{}_critic_targets".format(pathway_name)],
@@ -735,6 +735,13 @@ class Procedure(object):
             )
             if policy:
                 tb["policy"]["{}_loss".format(pathway_name)](losses["policy"])
+                with self.summary_writer.as_default():
+                    if pathway_name == "magno":
+                        tf.summary.histogram("tilt_grad", action_grads[..., 0], step=self.n_policy_training)
+                        tf.summary.histogram("pan_grad", action_grads[..., 1], step=self.n_policy_training)
+                    elif pathway_name == "pavro":
+                        tf.summary.histogram("vergence_grad", action_grads[..., 0], step=self.n_policy_training)
+                        tf.summary.histogram("cyclo_grad", action_grads[..., 1], step=self.n_policy_training)
             if critic:
                 tb["critic"]["{}_loss".format(pathway_name)](losses["critic"])
             if encoders:

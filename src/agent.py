@@ -239,14 +239,15 @@ class Agent(object):
 
     @tf.function
     def train_policy(self, frame_by_scale, pathway_name):
-        with tf.GradientTape() as tape:
+        with tf.GradientTape() as tape_weights, tf.GradientTape() as tape_actions:
             actions = self.get_actions(frame_by_scale, pathway_name, exploration=False)
             return_estimates = self.get_return_estimates(frame_by_scale, actions, pathway_name)
             loss_policy = - tf.reduce_sum(return_estimates)
             variables = self.models[pathway_name]["policy_model"].variables
-            grads = tape.gradient(loss_policy, variables)
+            grads = tape_weights.gradient(loss_policy, variables)
+            action_grads = tape_actions.gradient(-loss_policy, actions)
             self.policy_optimizer[pathway_name].apply_gradients(zip(grads, variables))
-        return loss_policy
+        return loss_policy, action_grads
 
     @tf.function
     def train(self, frame_by_scale, actions, targets, pathway_name,
@@ -259,6 +260,7 @@ class Agent(object):
             critic_loss = self.train_critic(frame_by_scale, actions, targets, pathway_name)
             losses["critic"] = critic_loss
         if policy:
-            policy_loss = self.train_policy(frame_by_scale, pathway_name)
+            policy_loss, action_grads = self.train_policy(frame_by_scale, pathway_name)
             losses["policy"] = policy_loss
-        return losses
+            return losses, action_grads
+        return losses, None
