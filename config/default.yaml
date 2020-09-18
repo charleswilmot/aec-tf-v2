@@ -34,8 +34,8 @@ experiment:
   evaluate_every: 10
   test_every: 500
   test_at_start: True
-  record_episode_every: 100
-  save_every: 100
+  record_episode_every: 500
+  save_every: 500
   final_recording: True
 
 agent:
