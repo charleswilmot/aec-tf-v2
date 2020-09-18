@@ -69,6 +69,7 @@ def action_wrt_error(ax, errors, actions, yscale, title=None, xlabel=None, ylabe
 def action_wrt_error_individual(ax, errors, actions, yscale, title=None, xlabel=None, ylabel=None):
     for action in actions.squeeze().T:
         ax.plot(errors, action, color='k', alpha=0.15)
+    ax.plot(errors, np.mean(actions.squeeze(), axis=-1), color='r')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
