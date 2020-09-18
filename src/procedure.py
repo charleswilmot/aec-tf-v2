@@ -638,12 +638,11 @@ class Procedure(object):
                 with self.simulation_pool.specific(list(range(chunk_size))):
                     conf = chunk["conf"]
                     angular_speeds_deg = np.sqrt(conf["tilt_error"] ** 2 + conf["pan_error"] ** 2)
-                    angular_speeds = np.deg2rad(angular_speeds_deg)
                     directions = angle(conf["pan_error"], conf["tilt_error"])
                     self.episode_reset_uniform_motion_screen(
                         start_distances=conf["object_distance"],
                         depth_speeds=[0] * chunk_size,
-                        angular_speeds=angular_speeds,
+                        angular_speeds=angular_speeds_deg,
                         directions=directions,
                         texture_ids=conf["stimulus"],
                         preinit=True,

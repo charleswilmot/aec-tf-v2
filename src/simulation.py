@@ -180,6 +180,10 @@ class SimulationConsumerAbstract(mp.Process):
     def good_bye(self):
         pass
 
+    @communicate_return_value
+    def blocking_barrier(self):
+        return None
+
 
 @default_dont_communicate_return
 class SimulationConsumer(SimulationConsumerAbstract):
@@ -677,6 +681,52 @@ if __name__ == '__main__':
         simulations.stop_sim()
         plt.close(fig)
 
+    def test_6():
+        import matplotlib.pyplot as plt
+        # plt.ion()
+        fig = plt.figure()
+        ax00 = fig.add_subplot(221)
+        ax10 = fig.add_subplot(222)
+        ax01 = fig.add_subplot(223)
+        ax11 = fig.add_subplot(224)
+        simulation = SimulationProducer(gui=True)
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        simulation.add_scale("only", (320, 320), 9.0)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=1.125,
+            direction=0,
+            texture_id=0,
+            preinit=True,
+        )
+        simulation.episode_reset_head(vergence=distance_to_vergence(2), cyclo=0)
+        simulation.step_sim()
+        simulation.step_sim()
+        vision_0 = simulation.get_vision()
+        simulation.step_sim()
+        vision_1 = simulation.get_vision()
+        im00 = ax00.imshow((0.5 + 0.5 * vision_0["only"][..., :3]))
+        im10 = ax10.imshow((0.5 + 0.5 * vision_0["only"][..., 3:]))
+        im01 = ax01.imshow((0.5 + 0.5 * vision_1["only"][..., :3]))
+        im11 = ax11.imshow((0.5 + 0.5 * vision_1["only"][..., 3:]))
+        plt.show()
+        for i in range(50):
+            simulation.episode_reset_uniform_motion_screen(
+                start_distance=2,
+                depth_speed=0,
+                angular_speed=1.125,
+                direction=0,
+                texture_id=0,
+                preinit=True,
+            )
+            for j in range(10):
+                simulation.step_sim()
+            
+
     def open_env():
         simulation = SimulationProducer(gui=True)
         simulation.start_sim()
@@ -688,4 +738,4 @@ if __name__ == '__main__':
         while True:
             simulation.step_sim()
 
-    test_5()
+    test_6()

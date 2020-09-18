@@ -239,7 +239,7 @@ class UniformMotionScreen(Screen):
         if angular_speed is None:
             self.angular_speed = np.random.uniform(0.0, self.max_speed_in_rad)
         else:
-            self.angular_speed = angular_speed
+            self.angular_speed = rad(angular_speed)
         if direction is None:
             self.direction = np.random.uniform(0, 2 * np.pi)
         else:
