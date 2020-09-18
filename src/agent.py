@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow import keras
 import numpy as np
 from custom_layers import custom_objects
+from omegaconf import OmegaConf
 
 
 def divide_no_nan(a, b, default=0.0):
@@ -21,37 +22,37 @@ class Agent(object):
         self.pathways = pathways
         self.scales = scales
         self.models = {}
-        for pathway in pathways:
+        for pathway, pathway_conf in pathways.items():
             #   POLICY
-            self.models[pathway.name] = {}
-            self.models[pathway.name]["policy_model"] = \
+            self.models[pathway] = {}
+            self.models[pathway]["policy_model"] = \
                 keras.models.model_from_yaml(
-                    pathway.policy_model_arch.pretty(resolve=True),
+                    OmegaConf.to_yaml(pathway_conf.policy_model_arch, resolve=True),
                     custom_objects=custom_objects
                 )
-            self.policy_optimizer[pathway.name] = keras.optimizers.Adam(self.policy_learning_rate)
+            self.policy_optimizer[pathway] = keras.optimizers.Adam(self.policy_learning_rate)
             #   CRITIC
-            self.models[pathway.name]["critic_model"] = \
+            self.models[pathway]["critic_model"] = \
                 keras.models.model_from_yaml(
-                    pathway.critic_model_arch.pretty(resolve=True),
+                    OmegaConf.to_yaml(pathway_conf.critic_model_arch, resolve=True),
                     custom_objects=custom_objects
                 )
-            self.critic_optimizer[pathway.name] = keras.optimizers.Adam(self.critic_learning_rate)
+            self.critic_optimizer[pathway] = keras.optimizers.Adam(self.critic_learning_rate)
             #   ENCODERS / DECODERS
-            self.models[pathway.name]["encoder_models"] = {}
-            self.models[pathway.name]["decoder_models"] = {}
-            for scale in scales:
-                self.models[pathway.name]["encoder_models"][scale.name] = \
+            self.models[pathway]["encoder_models"] = {}
+            self.models[pathway]["decoder_models"] = {}
+            for scale, scale_conf in scales.items():
+                self.models[pathway]["encoder_models"][scale] = \
                     keras.models.model_from_yaml(
-                        pathway.encoder_model_arch.pretty(resolve=True),
+                        OmegaConf.to_yaml(pathway_conf.encoder_model_arch, resolve=True),
                         custom_objects=custom_objects
                     )
-                self.models[pathway.name]["decoder_models"][scale.name] = \
+                self.models[pathway]["decoder_models"][scale] = \
                     keras.models.model_from_yaml(
-                        pathway.decoder_model_arch.pretty(resolve=True),
+                        OmegaConf.to_yaml(pathway_conf.decoder_model_arch, resolve=True),
                         custom_objects=custom_objects
                     )
-            self.encoder_optimizer[pathway.name] = keras.optimizers.Adam(self.encoder_learning_rate)
+            self.encoder_optimizer[pathway] = keras.optimizers.Adam(self.encoder_learning_rate)
         #   EXPLORATION NOISE
         self.exploration_params = exploration
         self.exploration_stddev = tf.Variable(exploration.stddev, dtype=tf.float32)
@@ -168,6 +169,14 @@ class Agent(object):
         return self.models[pathway_name]["critic_model"]((encodings_by_scale, actions))
 
     @tf.function
+    def get_gradient(self, frame_by_scale, actions, pathway_name):
+        with tf.GradientTape() as tape:
+            tape.watch(actions)
+            return_estimates = self.get_return_estimates(frame_by_scale, actions, pathway_name)
+            gradient = tape.gradient(tf.reduce_sum(return_estimates), actions)
+        return gradient
+
+    @tf.function
     def get_actions(self, frame_by_scale, pathway_name, exploration=False):
         encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
         pure_actions = self.models[pathway_name]["policy_model"](encodings_by_scale)
@@ -188,12 +197,12 @@ class Agent(object):
     @tf.function
     def get_encoder_loss_by_scale(self, frame_by_scale, pathway_name):
         encoder_sizes = {
-            pathway.name: list(pathway.encoder_model_arch.config.layers[0].config.kernel_size)
-            for pathway in self.pathways
+            pathway: list(pathway_conf.encoder_model_arch.config.layers[0].config.kernel_size)
+            for pathway, pathway_conf in self.pathways.items()
         }
         encoder_strides = {
-            pathway.name: list(pathway.encoder_model_arch.config.layers[0].config.strides)
-            for pathway in self.pathways
+            pathway: list(pathway_conf.encoder_model_arch.config.layers[0].config.strides)
+            for pathway, pathway_conf in self.pathways.items()
         }
         reconstructions_by_scale = self.get_reconstructions(frame_by_scale, pathway_name)
         patches_by_scale = {

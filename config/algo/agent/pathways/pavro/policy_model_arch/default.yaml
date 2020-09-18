@@ -1,0 +1,48 @@
+# @package _group_
+
+
+backend: tensorflow
+class_name: Sequential
+config:
+  layers:
+  - class_name: PolicyPerScaleConv2D
+    config:
+      activation: tanh
+      filters: 64
+      kernel_size:
+      - 2
+      - 2
+      n_scales: 2
+      padding: valid
+      pool_padding: valid
+      pool_size:
+      - 2
+      - 2
+      pool_strides:
+      - 2
+      - 2
+      strides:
+      - 1
+      - 1
+  - class_name: Dense
+    config:
+      activation: tanh
+      activity_regularizer: null
+      bias_constraint: null
+      bias_initializer:
+        class_name: Zeros
+        config: {}
+      bias_regularizer: null
+      dtype: float32
+      kernel_constraint: null
+      kernel_initializer:
+        class_name: GlorotUniform
+        config:
+          seed: null
+      kernel_regularizer: null
+      name: dense_2
+      trainable: true
+      units: 2
+      use_bias: true
+  name: sequential_4
+keras_version: 2.3.0-tf

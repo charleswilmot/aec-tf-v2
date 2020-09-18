@@ -1,0 +1,53 @@
+buffer:
+  size: 10000
+
+simulation:
+  n: 20
+  guis:
+    -
+
+experiment:
+  n_episodes: 500000
+  policy_every: 1
+  policy_after: 1000
+  critic_every: 1
+  encoders_every: 1
+  evaluate_every: 10
+  test_every: 500
+  test_at_start: True
+  record_episode_every: 100
+  save_every: 100
+  final_recording: True
+
+
+defaults:
+  - procedure: vergence_only
+  - procedure/screen: vergence
+  - agent: default
+  - agent/exploration: default
+  - agent/scales: default
+  - agent/pathways/pavro: default
+  - agent/pathways/pavro/critic_model_arch: default
+  - agent/pathways/pavro/policy_model_arch: default
+  - agent/pathways/pavro/encoder_model_arch: default
+  - agent/pathways/pavro/decoder_model_arch: default
+  - agent/pathways/magno: default
+  - agent/pathways/magno/critic_model_arch: tiny
+  - agent/pathways/magno/policy_model_arch: default
+  - agent/pathways/magno/encoder_model_arch: default
+  - agent/pathways/magno/decoder_model_arch: default
+
+
+hydra:
+  run:
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}_${slash_to_dot:${hydra.job.override_dirname}}
+  sweep:
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+    subdir: job${hydra.job.num}_${slash_to_dot:${hydra.job.override_dirname}}
+  job:
+    config:
+      # configuration for the ${hydra.job.override_dirname} runtime variable
+      override_dirname:
+        kv_sep: '.'
+        item_sep: '__'
+        exclude_keys: []

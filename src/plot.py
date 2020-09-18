@@ -5,7 +5,7 @@ import numpy as np
 
 class FigureManager:
     def __init__(self, filepath, save=True):
-        self._fig = plt.figure(dpi=200)
+        self._fig = plt.figure(figsize=(8.53, 4.8), dpi=200)
         self._filepath = filepath
         self._save = save
 
@@ -88,14 +88,14 @@ def critic_error_wrt_episode(ax, critic, recerr, title=None, xlabel=None, ylabel
     a = 0
     b = 0
     for critic_one_error, true_critic_one_error in zip(critic, true_critic):
-        total = 4
+        total = 1
         sub_ax = inset_axes(ax, height="100%", width="100%", bbox_to_anchor=(0.05, a / len(critic) + 0.015, 1.00, 1 / len(critic)), bbox_transform=ax.transAxes)
         if b != 0:
             sub_ax.set_yticks([])
         sub_ax.set_xticks([])
         for critic_one_error_one_stimulus, true_critic_one_error_one_stimulus in zip(critic_one_error, true_critic_one_error):
-            sub_ax.fill_between(x, critic_one_error_one_stimulus, true_critic_one_error_one_stimulus, color='b', alpha=0.1)
-            sub_ax.plot(x, critic_one_error_one_stimulus, 'r-', alpha=0.1)
+            sub_ax.fill_between(x, critic_one_error_one_stimulus, true_critic_one_error_one_stimulus, color='b', alpha=0.5)
+            sub_ax.plot(x, critic_one_error_one_stimulus, 'r-', alpha=1)
             total -= 1
             if total == 0:
                 break
@@ -108,27 +108,24 @@ def critic_error_wrt_episode(ax, critic, recerr, title=None, xlabel=None, ylabel
     ax.set_xticks([])
 
 
-def scatter_wrt_delta_error(ax, data, error, title=None, xlabel=None, ylabel=None):
-    delta_error = error[..., :-1] - error[..., 1:]
-    ax.scatter(delta_error.flatten(), data.flatten(), alpha=0.2, s=1)
+def scatter_plot(ax, data_x, data_y, title=None, xlabel=None, ylabel=None):
+    ax.scatter(data_x.flatten(), data_y.flatten(), alpha=0.2, s=1)
     try:
-        a, b = np.polyfit(delta_error.flatten(), data.flatten(), 1)
-        mini = np.min(delta_error)
-        maxi = np.max(delta_error)
+        a, b = np.polyfit(data_x.flatten(), data_y.flatten(), 1)
+        mini = np.min(data_x)
+        maxi = np.max(data_x)
         ax.plot([mini, maxi], [a * mini + b, a * maxi + b], 'r-')
     except np.linalg.LinAlgError:
         pass
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
-    # if ylabel is None:
-    #     ax.set_yticks([])
 
 
 if __name__ == '__main__':
     from test_data import TestDataContainer
 
-    path = "../experiments/2020-09-09/13-23-05/job3_agent.exploration.prob.0.05__agent.exploration.stddev.0.25__agent.policy_learning_rate.1e-05__procedure.action_scaling.2.2.25/tests/default_at_2m_009980.pkl"
+    path = "../experiments/2020-09-10/16-47-34/job9_agent.exploration.stddev.0.25__agent.pathways.pavro.critic_model_arch.config.layers.0.config.filters.16__agent.pathways.pavro.critic_model_arch.big__procedure.action_scaling.2.2.25/tests/tests/default_at_2m_000000.pkl"
     plot_path = "/tmp/plot/"
     save = True
 

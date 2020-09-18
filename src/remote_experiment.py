@@ -6,7 +6,7 @@ import os
 from test_data import TestDataContainer
 
 
-@hydra.main(config_path="../config/", config_name="cluster.yaml")
+@hydra.main(config_path="../config/scripts/", config_name="cluster.yaml")
 def remote_experiment(cfg):
     with open(cfg.rundir + '/cfg.json', 'r') as f:
         other_cfg_json = json.load(f)

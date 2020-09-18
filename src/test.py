@@ -12,7 +12,7 @@ def get_conf():
     return cfg
 
 
-@hydra.main(config_path="../config/", config_name="test.yaml")
+@hydra.main(config_path="../config/scripts/", config_name="test.yaml")
 def main(cfg):
     test(cfg)
 

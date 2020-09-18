@@ -9,7 +9,7 @@ from test_data import TestDataContainer
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
-@hydra.main(config_path='../config/', config_name='default.yaml')
+@hydra.main(config_path='../config/algo/', config_name='config.yaml')
 def main(cfg):
     experiment(cfg)
 

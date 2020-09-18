@@ -1,0 +1,9 @@
+# @package _group_
+
+
+fine:
+  resolution: 32
+  view_angle: 9
+coarse:
+  resolution: 32
+  view_angle: 27

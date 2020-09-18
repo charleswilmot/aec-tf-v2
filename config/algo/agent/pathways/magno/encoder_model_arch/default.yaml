@@ -1,0 +1,71 @@
+# @package _group_
+
+
+backend: tensorflow
+class_name: Sequential
+config:
+  layers:
+  - class_name: Conv2D
+    config:
+      activation: relu
+      activity_regularizer: null
+      bias_constraint: null
+      bias_initializer:
+        class_name: Zeros
+        config: {}
+      bias_regularizer: null
+      data_format: channels_last
+      dilation_rate:
+      - 1
+      - 1
+      dtype: float32
+      filters: 192
+      kernel_constraint: null
+      kernel_initializer:
+        class_name: GlorotUniform
+        config:
+          seed: null
+      kernel_regularizer: null
+      kernel_size:
+      - 8
+      - 8
+      name: conv2d_4
+      padding: valid
+      strides:
+      - 4
+      - 4
+      trainable: true
+      use_bias: true
+  - class_name: Conv2D
+    config:
+      activation: relu
+      activity_regularizer: null
+      bias_constraint: null
+      bias_initializer:
+        class_name: Zeros
+        config: {}
+      bias_regularizer: null
+      data_format: channels_last
+      dilation_rate:
+      - 1
+      - 1
+      dtype: float32
+      filters: 48
+      kernel_constraint: null
+      kernel_initializer:
+        class_name: GlorotUniform
+        config:
+          seed: null
+      kernel_regularizer: null
+      kernel_size:
+      - 1
+      - 1
+      name: conv2d_5
+      padding: valid
+      strides:
+      - 1
+      - 1
+      trainable: true
+      use_bias: true
+  name: sequential_1
+keras_version: 2.3.0-tf

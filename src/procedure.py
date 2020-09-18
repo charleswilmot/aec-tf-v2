@@ -46,10 +46,11 @@ def text_frame(height, width, **lines):
 
 
 def get_snr_db(signal, noise, axis=1):
+    epsilon = 1e-6
     std_signal = np.std(signal, axis=axis)
     std_noise = np.std(noise, axis=axis)
-    rms_signal_db = np.log10(std_signal)
-    rms_noise_db = np.log10(std_noise)
+    rms_signal_db = np.log10(std_signal + epsilon)
+    rms_noise_db = np.log10(std_noise + epsilon)
     return 20 * (rms_signal_db - rms_noise_db)
 
 
@@ -93,7 +94,7 @@ class Procedure(object):
         #   OBJECTS
         self.agent = Agent(**agent_conf)
         self.buffer = Buffer(**buffer_conf)
-        self.scale_names = [scale.name for scale in agent_conf.scales]
+        self.scale_names = list(agent_conf.scales)
         #   SIMULATION POOL
         guis = list(simulation_conf.guis)
         self.simulation_pool = SimulationPool(
@@ -102,8 +103,8 @@ class Procedure(object):
         )
         self.simulation_pool.add_background("ny_times_square")
         self.simulation_pool.add_head()
-        for scale in agent_conf.scales:
-            self.simulation_pool.add_scale(scale.name, (scale.resolution, scale.resolution), scale.view_angle)
+        for scale, scale_conf in agent_conf.scales.items():
+            self.simulation_pool.add_scale(scale, (scale_conf.resolution, scale_conf.resolution), scale_conf.view_angle)
         self.simulation_pool.add_uniform_motion_screen(
             textures_path=procedure_conf.screen.textures_path,
             size=procedure_conf.screen.size,
@@ -122,15 +123,15 @@ class Procedure(object):
         #   DEFINING DATA BUFFERS
         # training
         pavro_dtype = np.dtype([
-            (scale.name, np.float32, (scale.resolution, scale.resolution, 6))
-            for scale in agent_conf.scales
+            (scale, np.float32, (scale_conf.resolution, scale_conf.resolution, 6))
+            for scale, scale_conf in agent_conf.scales.items()
         ])
         magno_dtype = np.dtype([
-            (scale.name, np.float32, (scale.resolution, scale.resolution, 12))
-            for scale in agent_conf.scales
+            (scale, np.float32, (scale_conf.resolution, scale_conf.resolution, 12))
+            for scale, scale_conf in agent_conf.scales.items()
         ])
-        n_pavro_joints = len(agent_conf.pathways[0].joints)
-        n_magno_joints = len(agent_conf.pathways[1].joints)
+        n_pavro_joints = len(agent_conf.pathways["pavro"].joints)
+        n_magno_joints = len(agent_conf.pathways["magno"].joints)
         self._train_data_type = np.dtype([
             ("pavro_vision", pavro_dtype),
             ("magno_vision", magno_dtype),
@@ -665,6 +666,8 @@ class Procedure(object):
                         recerr_magno = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
                         critic_pavro = self.agent.get_return_estimates(pavro_vision, pavro_pure_actions, "pavro")
                         critic_magno = self.agent.get_return_estimates(magno_vision, magno_pure_actions, "magno")
+                        gradient_pavro = self.agent.get_gradient(pavro_vision, pavro_pure_actions, "pavro")
+                        gradient_magno = self.agent.get_gradient(magno_vision, magno_pure_actions, "magno")
                         tilt_error, pan_error, vergence_error = self.get_joints_errors()
                         tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
                         tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
@@ -675,6 +678,10 @@ class Procedure(object):
                         chunk["result"]["recerr_pavro"][:, iteration] = recerr_pavro
                         chunk["result"]["critic_magno"][:, iteration] = critic_magno[..., 0]
                         chunk["result"]["critic_pavro"][:, iteration] = critic_pavro[..., 0]
+                        chunk["result"]["tilt_gradient"][:, iteration] = gradient_magno[..., 0]
+                        chunk["result"]["pan_gradient"][:, iteration] = gradient_magno[..., 1]
+                        chunk["result"]["vergence_gradient"][:, iteration] = gradient_pavro[..., 0]
+                        chunk["result"]["cyclo_gradient"][:, iteration] = gradient_pavro[..., 1]
                         chunk["result"]["pan_pos"][:, iteration] = pan_pos
                         chunk["result"]["tilt_pos"][:, iteration] = tilt_pos
                         chunk["result"]["vergence_pos"][:, iteration] = vergence_pos

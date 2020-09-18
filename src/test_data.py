@@ -35,6 +35,10 @@ dttest_result = np.dtype([
     ("tilt_action", np.float32),
     ("vergence_action", np.float32),
     ("cyclo_action", np.float32),
+    ("pan_gradient", np.float32),
+    ("tilt_gradient", np.float32),
+    ("vergence_gradient", np.float32),
+    ("cyclo_gradient", np.float32),
 ])
 
 
@@ -403,38 +407,87 @@ class TestDataContainer:
         with plot.FigureManager(path + "/reward.png", save=save) as fig:
             ax = fig.add_subplot(141)
             data = self.data_by_name("pan_speed_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["pan_error"])
+            plot.scatter_plot(
                 ax,
+                abs_error[..., :-1] - abs_error[..., 1:],
                 (data["result"]["recerr_magno"][..., :-1] - data["result"]["recerr_magno"][..., 1:]) * 600,
-                np.abs(data["result"]["pan_error"]),
                 xlabel="delta pan error",
                 ylabel="Reward"
             )
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("tilt_speed_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["tilt_error"])
+            plot.scatter_plot(
                 ax,
+                abs_error[..., :-1] - abs_error[..., 1:],
                 (data["result"]["recerr_magno"][..., :-1] - data["result"]["recerr_magno"][..., 1:]) * 600,
-                np.abs(data["result"]["tilt_error"]),
                 xlabel="tilt",
             )
 
             ax = fig.add_subplot(143)
             data = self.data_by_name("vergence_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["vergence_error"])
+            plot.scatter_plot(
                 ax,
+                abs_error[..., :-1] - abs_error[..., 1:],
                 (data["result"]["recerr_pavro"][..., :-1] - data["result"]["recerr_pavro"][..., 1:]) * 600,
-                np.abs(data["result"]["vergence_error"]),
                 xlabel="vergence",
             )
 
             ax = fig.add_subplot(144)
             data = self.data_by_name("cyclo_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["cyclo_pos"])
+            plot.scatter_plot(
+                ax,
+                abs_error[..., :-1] - abs_error[..., 1:],
+                (data["result"]["recerr_pavro"][..., :-1] - data["result"]["recerr_pavro"][..., 1:]) * 600,
+                xlabel="cyclo",
+            )
+
+    def plot_critic_wrt_reward(self, path, save=True):
+        if self.missing_data("pan_speed_trajectory", "tilt_speed_trajectory", "vergence_trajectory", "cyclo_trajectory"):
+            return
+        with plot.FigureManager(path + "/critic_reward.png", save=save) as fig:
+            ax = fig.add_subplot(141)
+            data = self.data_by_name("pan_speed_trajectory")
+            abs_error = np.abs(data["result"]["pan_error"])
+            plot.scatter_plot(
+                ax,
+                (data["result"]["recerr_magno"][..., :-1] - data["result"]["recerr_magno"][..., 1:]) * 600,
+                data["result"]["critic_magno"][..., :-1],
+                xlabel="pan reward",
+                ylabel="Critic"
+            )
+
+            ax = fig.add_subplot(142)
+            data = self.data_by_name("tilt_speed_trajectory")
+            abs_error = np.abs(data["result"]["tilt_error"])
+            plot.scatter_plot(
+                ax,
+                (data["result"]["recerr_magno"][..., :-1] - data["result"]["recerr_magno"][..., 1:]) * 600,
+                data["result"]["critic_magno"][..., :-1],
+                xlabel="tilt",
+            )
+
+            ax = fig.add_subplot(143)
+            data = self.data_by_name("vergence_trajectory")
+            abs_error = np.abs(data["result"]["vergence_error"])
+            plot.scatter_plot(
                 ax,
                 (data["result"]["recerr_pavro"][..., :-1] - data["result"]["recerr_pavro"][..., 1:]) * 600,
-                np.abs(data["result"]["cyclo_pos"]),
+                data["result"]["critic_pavro"][..., :-1],
+                xlabel="vergence",
+            )
+
+            ax = fig.add_subplot(144)
+            data = self.data_by_name("cyclo_trajectory")
+            abs_error = np.abs(data["result"]["cyclo_pos"])
+            plot.scatter_plot(
+                ax,
+                (data["result"]["recerr_pavro"][..., :-1] - data["result"]["recerr_pavro"][..., 1:]) * 600,
+                data["result"]["critic_pavro"][..., :-1],
                 xlabel="cyclo",
             )
 
@@ -444,38 +497,84 @@ class TestDataContainer:
         with plot.FigureManager(path + "/critic.png", save=save) as fig:
             ax = fig.add_subplot(141)
             data = self.data_by_name("pan_speed_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["pan_error"])
+            plot.scatter_plot(
                 ax,
                 data["result"]["critic_magno"][..., :-1],
-                np.abs(data["result"]["pan_error"]),
+                abs_error[..., :-1] - abs_error[..., 1:],
                 xlabel="delta pan error",
                 ylabel="Predicted return"
             )
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("tilt_speed_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["tilt_error"])
+            plot.scatter_plot(
                 ax,
                 data["result"]["critic_magno"][..., :-1],
-                np.abs(data["result"]["tilt_error"]),
+                abs_error[..., :-1] - abs_error[..., 1:],
                 xlabel="tilt",
             )
 
             ax = fig.add_subplot(143)
             data = self.data_by_name("vergence_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["vergence_error"])
+            plot.scatter_plot(
                 ax,
                 data["result"]["critic_pavro"][..., :-1],
-                np.abs(data["result"]["vergence_error"]),
+                abs_error[..., :-1] - abs_error[..., 1:],
                 xlabel="vergence",
             )
 
             ax = fig.add_subplot(144)
             data = self.data_by_name("cyclo_trajectory")
-            plot.scatter_wrt_delta_error(
+            abs_error = np.abs(data["result"]["cyclo_pos"])
+            plot.scatter_plot(
                 ax,
                 data["result"]["critic_pavro"][..., :-1],
-                np.abs(data["result"]["cyclo_pos"]),
+                abs_error[..., :-1] - abs_error[..., 1:],
+                xlabel="cyclo",
+            )
+
+    def plot_gradient_wrt_action_error(self, path, save=True):
+        if self.missing_data("pan_speed_trajectory", "tilt_speed_trajectory", "vergence_trajectory", "cyclo_trajectory"):
+            return
+        with plot.FigureManager(path + "/gradient.png", save=save) as fig:
+            ax = fig.add_subplot(141)
+            data = self.data_by_name("pan_speed_trajectory")
+            plot.scatter_plot(
+                ax,
+                data["result"]["pan_error"][..., 1:],
+                data["result"]["pan_gradient"][..., :-1],
+                xlabel="pan error",
+                ylabel="Gradient"
+            )
+
+            ax = fig.add_subplot(142)
+            data = self.data_by_name("tilt_speed_trajectory")
+            plot.scatter_plot(
+                ax,
+                data["result"]["tilt_error"][..., 1:],
+                data["result"]["tilt_gradient"][..., :-1],
+                xlabel="tilt",
+            )
+
+            ax = fig.add_subplot(143)
+            data = self.data_by_name("vergence_trajectory")
+            plot.scatter_plot(
+                ax,
+                data["result"]["vergence_error"][..., 1:],
+                data["result"]["vergence_gradient"][..., :-1],
+                xlabel="vergence",
+            )
+            print(data["result"]["vergence_error"][..., 1:])
+
+            ax = fig.add_subplot(144)
+            data = self.data_by_name("cyclo_trajectory")
+            plot.scatter_plot(
+                ax,
+                data["result"]["cyclo_pos"][..., 1:],
+                data["result"]["cyclo_gradient"][..., :-1],
                 xlabel="cyclo",
             )
 
@@ -487,6 +586,8 @@ class TestDataContainer:
         self.plot_critic_error(path, save=save)
         self.plot_reward_wrt_delta_error(path, save=save)
         self.plot_critic_wrt_delta_error(path, save=save)
+        self.plot_critic_wrt_reward(path, save=save)
+        self.plot_gradient_wrt_action_error(path, save=save)
 
 def test_case(stimulus, object_distance, vergence_error, cyclo_pos, pan_error, tilt_error, n_iterations):
     return np.array((
@@ -532,22 +633,23 @@ if __name__ == "__main__":
     errors = [90 / 320 * i for i in [-0.5, -1, -1.5, -2, -2.5, -3, -3.5, -4, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]]
     bound_in_px = 8
     cyclo_bound_in_deg = 5
-    test_conf = TestDataContainer(
-        stimulus=range(20),
-        object_distance=[2],
-        pan_error=errors,
-        tilt_error=errors,
-        vergence_error=errors,
-        cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8),
-        n_iterations=20,
-        name="default_at_2m"
-    )
-    test_conf.add_vergence_trajectory()
-    test_conf.add_cyclo_trajectory()
-    test_conf.add_speed_trajectory("tilt")
-    test_conf.add_speed_trajectory("pan")
-    test_conf.add_wrt_vergence_error(bound_in_px)
-    test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
-    test_conf.add_wrt_speed_error("tilt", bound_in_px)
-    test_conf.add_wrt_speed_error("pan", bound_in_px)
-    test_conf.dump("../config/test_conf/")
+    for distance in [2, 4, 6]:
+        test_conf = TestDataContainer(
+            stimulus=range(20),
+            object_distance=[distance],
+            pan_error=errors,
+            tilt_error=errors,
+            vergence_error=errors,
+            cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8),
+            n_iterations=20,
+            name="default_at_{}m".format(distance)
+        )
+        test_conf.add_vergence_trajectory()
+        test_conf.add_cyclo_trajectory()
+        test_conf.add_speed_trajectory("tilt")
+        test_conf.add_speed_trajectory("pan")
+        test_conf.add_wrt_vergence_error(bound_in_px)
+        test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
+        test_conf.add_wrt_speed_error("tilt", bound_in_px)
+        test_conf.add_wrt_speed_error("pan", bound_in_px)
+        test_conf.dump("../config/test_conf/")

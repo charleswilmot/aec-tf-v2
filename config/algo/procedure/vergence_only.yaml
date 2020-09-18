@@ -1,0 +1,12 @@
+# @package _group_
+
+episode_length: 10
+batch_size: 256
+updates_per_sample: 1
+action_scaling:
+  - 0.000
+  - 0.000
+  - 1.125
+  - 0.000
+reward_scaling: 600
+test_conf_path: ${hydra:runtime.cwd}/../config/test_conf/default_at_2m.pkl
