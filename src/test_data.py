@@ -315,13 +315,58 @@ class TestDataContainer:
                 xlabel="cyclo pos (deg)",
             )
 
+    def plot_action_wrt_error_individual(self, path, save=True):
+        if self.missing_data("wrt_pan_error", "wrt_tilt_error", "wrt_vergence_error", "wrt_cyclo_pos"):
+            return
+        with plot.FigureManager(path + "/policy_individual.png", save=save) as fig:
+            ax = fig.add_subplot(141)
+            data = self.data_by_name("wrt_pan_error", dim0="conf.pan_error")
+            plot.action_wrt_error_individual(
+                ax,
+                data["conf"]["pan_error"][:, 0],
+                data["result"]["pan_action"],
+                1,
+                xlabel="pan error (px/it)",
+                ylabel="action"
+            )
+
+            ax = fig.add_subplot(142)
+            data = self.data_by_name("wrt_tilt_error", dim0="conf.tilt_error")
+            plot.action_wrt_error_individual(
+                ax,
+                data["conf"]["tilt_error"][:, 0],
+                data["result"]["tilt_action"],
+                1,
+                xlabel="tilt error (px/it)",
+            )
+
+            ax = fig.add_subplot(143)
+            data = self.data_by_name("wrt_vergence_error", dim0="conf.vergence_error")
+            plot.action_wrt_error_individual(
+                ax,
+                data["conf"]["vergence_error"][:, 0],
+                data["result"]["vergence_action"],
+                1,
+                xlabel="vergence error (px)",
+            )
+
+            ax = fig.add_subplot(144)
+            data = self.data_by_name("wrt_cyclo_pos", dim0="conf.cyclo_pos")
+            plot.action_wrt_error_individual(
+                ax,
+                data["conf"]["cyclo_pos"][:, 0],
+                data["result"]["cyclo_action"],
+                1,
+                xlabel="cyclo pos (deg)",
+            )
+
     def plot_abs_error_in_episode(self, path, save=True):
         if self.missing_data("pan_speed_trajectory", "tilt_speed_trajectory", "vergence_trajectory", "cyclo_trajectory"):
             return
         with plot.FigureManager(path + "/abs_error.png", save=save) as fig:
             ax = fig.add_subplot(141)
             data = self.data_by_name("pan_speed_trajectory")
-            plot.data_wrt_episode(
+            plot.data_wrt_episode_mean_std(
                 ax,
                 np.abs(data["result"]["pan_error"]),
                 std=True,
@@ -332,7 +377,7 @@ class TestDataContainer:
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("tilt_speed_trajectory")
-            plot.data_wrt_episode(
+            plot.data_wrt_episode_mean_std(
                 ax,
                 np.abs(data["result"]["tilt_error"]),
                 std=True,
@@ -342,7 +387,7 @@ class TestDataContainer:
 
             ax = fig.add_subplot(143)
             data = self.data_by_name("vergence_trajectory")
-            plot.data_wrt_episode(
+            plot.data_wrt_episode_mean_std(
                 ax,
                 np.abs(data["result"]["vergence_error"]),
                 std=True,
@@ -352,7 +397,7 @@ class TestDataContainer:
 
             ax = fig.add_subplot(144)
             data = self.data_by_name("cyclo_trajectory")
-            plot.data_wrt_episode(
+            plot.data_wrt_episode_mean_std(
                 ax,
                 np.abs(data["result"]["cyclo_pos"]),
                 std=True,
@@ -360,16 +405,66 @@ class TestDataContainer:
                 xlabel="cyclo",
             )
 
+    def plot_error_in_episode(self, path, save=True):
+        if self.missing_data("pan_speed_trajectory", "tilt_speed_trajectory", "vergence_trajectory", "cyclo_trajectory"):
+            return
+        with plot.FigureManager(path + "/error_trajectory.png", save=save) as fig:
+            ax = fig.add_subplot(141)
+            data = self.data_by_name("pan_speed_trajectory")
+            errors = data["conf"]["pan_error"]
+            ylim = [np.min(errors) * 1.5, np.max(errors) * 1.5]
+            plot.data_wrt_episode(
+                ax,
+                data["result"]["pan_error"],
+                ylim=ylim,
+                xlabel="pan",
+                ylabel="Joint error"
+            )
+
+            ax = fig.add_subplot(142)
+            data = self.data_by_name("tilt_speed_trajectory")
+            errors = data["conf"]["tilt_error"]
+            ylim = [np.min(errors) * 1.5, np.max(errors) * 1.5]
+            plot.data_wrt_episode(
+                ax,
+                data["result"]["tilt_error"],
+                ylim=ylim,
+                xlabel="tilt",
+            )
+
+            ax = fig.add_subplot(143)
+            data = self.data_by_name("vergence_trajectory")
+            errors = data["conf"]["vergence_error"]
+            ylim = [np.min(errors) * 1.5, np.max(errors) * 1.5]
+            plot.data_wrt_episode(
+                ax,
+                data["result"]["vergence_error"],
+                ylim=ylim,
+                xlabel="vergence",
+            )
+
+            ax = fig.add_subplot(144)
+            data = self.data_by_name("cyclo_trajectory")
+            errors = data["conf"]["cyclo_pos"]
+            ylim = [np.min(errors) * 1.5, np.max(errors) * 1.5]
+            plot.data_wrt_episode(
+                ax,
+                data["result"]["cyclo_pos"],
+                ylim=ylim,
+                xlabel="cyclo",
+            )
+
     def plot_critic_error(self, path, save=True):
         if self.missing_data("pan_speed_trajectory", "tilt_speed_trajectory", "vergence_trajectory", "cyclo_trajectory"):
             return
+        N = 10
         with plot.FigureManager(path + "/critic_error.png", save=save) as fig:
             ax = fig.add_subplot(141)
             data = self.data_by_name("pan_speed_trajectory", dim0="conf.pan_error", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_magno"][:5],
-                data["result"]["recerr_magno"][:5],
+                data["result"]["critic_magno"][:N],
+                data["result"]["recerr_magno"][:N],
                 xlabel="pan",
                 ylabel="Reward"
             )
@@ -378,8 +473,8 @@ class TestDataContainer:
             data = self.data_by_name("tilt_speed_trajectory", dim0="conf.tilt_error", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_magno"][:5],
-                data["result"]["recerr_magno"][:5],
+                data["result"]["critic_magno"][:N],
+                data["result"]["recerr_magno"][:N],
                 xlabel="tilt",
             )
 
@@ -387,8 +482,8 @@ class TestDataContainer:
             data = self.data_by_name("vergence_trajectory", dim0="conf.vergence_error", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_pavro"][:5],
-                data["result"]["recerr_pavro"][:5],
+                data["result"]["critic_pavro"][:N],
+                data["result"]["recerr_pavro"][:N],
                 xlabel="vergence",
             )
 
@@ -396,8 +491,8 @@ class TestDataContainer:
             data = self.data_by_name("cyclo_trajectory", dim0="conf.cyclo_pos", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_pavro"][:5],
-                data["result"]["recerr_pavro"][:5],
+                data["result"]["critic_pavro"][:N],
+                data["result"]["recerr_pavro"][:N],
                 xlabel="cyclo",
             )
 
@@ -567,7 +662,6 @@ class TestDataContainer:
                 data["result"]["vergence_gradient"][..., :-1],
                 xlabel="vergence",
             )
-            print(data["result"]["vergence_error"][..., 1:])
 
             ax = fig.add_subplot(144)
             data = self.data_by_name("cyclo_trajectory")
@@ -582,7 +676,9 @@ class TestDataContainer:
         os.makedirs(path, exist_ok=True)
         self.plot_recerr_wrt_error(path, save=save)
         self.plot_action_wrt_error(path, save=save)
+        self.plot_action_wrt_error_individual(path, save=save)
         self.plot_abs_error_in_episode(path, save=save)
+        self.plot_error_in_episode(path, save=save)
         self.plot_critic_error(path, save=save)
         self.plot_reward_wrt_delta_error(path, save=save)
         self.plot_critic_wrt_delta_error(path, save=save)
