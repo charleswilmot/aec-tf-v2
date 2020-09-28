@@ -165,9 +165,11 @@ def scatter_plot(ax, data_x, data_y, title=None, xlabel=None, ylabel=None):
 
 if __name__ == '__main__':
     from test_data import TestDataContainer
+    import sys
 
-    path = "../experiments/2020-09-16/15-04-45/job3_agent.exploration.prob.0.5__agent.exploration.stddev.0.125__agent.pathways.pavro.critic_model_arch.config.layers.0.config.filters.16__agent.pathways.pavro.critic_model_arch.big__procedure.action_scaling.2.1.125/tests/default_at_2m_499980.pkl"
-    plot_path = "/tmp/plot/"
+    path = sys.argv[1]
+    plot_path = "/".join(path.split("/")[:-2]) + "/plots/" + path.split("/")[-1].split(".")[0]
+    print(plot_path)
     save = True
 
     test_data = TestDataContainer.load(path)

@@ -224,7 +224,7 @@ class TestDataContainer:
                 return True
         return False
 
-    def plot_recerr_wrt_error(self, path, ylim=[0, 0.04], save=True):
+    def plot_recerr_wrt_error(self, path, ylim=[0, 0.2], save=True):
         if self.missing_data("wrt_pan_error", "wrt_tilt_error", "wrt_vergence_error", "wrt_cyclo_pos"):
             return
         with plot.FigureManager(path + "/reconstruction_error.png", save=save) as fig:
@@ -672,6 +672,33 @@ class TestDataContainer:
                 xlabel="cyclo",
             )
 
+    def plot_critic_wrt_action(self, path, save=True):
+        if not hasattr(self, "test_critic_data") or self.test_critic_data is None:
+            return
+        with plot.FigureManager(path + "/critic_wrt_action.png", save=save) as fig:
+            ax = fig.add_subplot(111)
+            x = np.linspace(-1, 1, self.test_critic_data.shape[0])
+            for data in self.test_critic_data.T:
+                ax.plot(x, data["return_estimates"], color='b', alpha=0.5)
+            ax.plot(x, np.mean(self.test_critic_data["return_estimates"], axis=-1), color='r')
+            ax.axvline(0, color='k', linestyle='--')
+            ax.set_xlabel("vergence action")
+            ax.set_ylabel("critic estimate")
+
+    def plot_gradient_wrt_action(self, path, save=True):
+        if not hasattr(self, "test_critic_data") or self.test_critic_data is None:
+            return
+        with plot.FigureManager(path + "/gradient_wrt_action.png", save=save) as fig:
+            ax = fig.add_subplot(111)
+            x = np.linspace(-1, 1, self.test_critic_data.shape[0])
+            for data in self.test_critic_data.T:
+                ax.plot(x, data["gradient"][:, 0], color='b', alpha=0.5)
+            ax.plot(x, np.mean(self.test_critic_data["gradient"][..., 0], axis=-1), color='r')
+            ax.axvline(0, color='k', linestyle='--')
+            ax.axhline(0, color='k', linestyle='--')
+            ax.set_xlabel("vergence action")
+            ax.set_ylabel("gradient wrt vergence")
+
     def plot(self, path, save=True):
         os.makedirs(path, exist_ok=True)
         self.plot_recerr_wrt_error(path, save=save)
@@ -684,6 +711,8 @@ class TestDataContainer:
         self.plot_critic_wrt_delta_error(path, save=save)
         self.plot_critic_wrt_reward(path, save=save)
         self.plot_gradient_wrt_action_error(path, save=save)
+        self.plot_critic_wrt_action(path, save=save)
+        self.plot_gradient_wrt_action(path, save=save)
 
 def test_case(stimulus, object_distance, vergence_error, cyclo_pos, pan_error, tilt_error, n_iterations):
     return np.array((

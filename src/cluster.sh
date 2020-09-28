@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --mincpus 12
-#SBATCH --mem 30000
+#SBATCH --mem 40000
 #SBATCH --exclude rockford,steele,hammer,conan,blomquist,wolfe,knatterton,holmes,lenssen,scuderi,matula,marlowe,poirot,monk
 #SBATCH -LXserver
 #SBATCH --gres gpu:1

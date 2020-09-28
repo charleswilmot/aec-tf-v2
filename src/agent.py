@@ -77,7 +77,7 @@ class Agent(object):
                 self.models[pathway_name]["encoder_models"][scale_name].load_weights(path + "/encoder_model_{}_{}".format(pathway_name, scale_name))
                 self.models[pathway_name]["decoder_models"][scale_name].load_weights(path + "/decoder_model_{}_{}".format(pathway_name, scale_name))
 
-    @tf.function
+    # @tf.function -- causes an error
     def create_all_variables(self, fake_frame_by_scale_pavro, fake_frame_by_scale_magno):
         # PAVRO
         fake_encodings_by_scale_pavro = {
@@ -90,7 +90,7 @@ class Agent(object):
         }
         fake_actions_pavro = self.models["pavro"]["policy_model"](fake_encodings_by_scale_pavro)
         fake_return_estimate = self.models["pavro"]["critic_model"]((fake_encodings_by_scale_pavro, fake_actions_pavro))
-        # MOGNO
+        # MAGNO
         fake_encodings_by_scale_magno = {
             scale_name: self.models["magno"]["encoder_models"][scale_name](frame)
             for scale_name, frame in fake_frame_by_scale_magno.items()
@@ -102,7 +102,7 @@ class Agent(object):
         fake_actions_magno = self.models["magno"]["policy_model"](fake_encodings_by_scale_magno)
         fake_return_estimate = self.models["magno"]["critic_model"]((fake_encodings_by_scale_magno, fake_actions_magno))
 
-        targets = np.zeros(shape=(len(fake_actions_magno), 1))
+        targets = np.zeros(shape=(len(fake_actions_magno), 1), dtype=np.float32)
 
         with tf.GradientTape() as tape:
             total_loss = tf.reduce_sum(self.get_encoder_loss(fake_frame_by_scale_pavro, "pavro"))

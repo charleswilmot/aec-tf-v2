@@ -15,6 +15,12 @@ from PIL import ImageDraw
 from test_data import TestDataContainer
 
 
+critic_test_dtype = np.dtype([
+    ("return_estimates", np.float32),
+    ("gradient", np.float32, (2,)),
+])
+
+
 def angle(pan_in_deg, tilt_in_deg):
     pan = np.deg2rad(pan_in_deg)
     tilt = np.deg2rad(tilt_in_deg) + 1e-8
@@ -628,6 +634,10 @@ class Procedure(object):
             test_conf = self.test_conf
         else:
             test_conf = TestDataContainer.load(test_conf_path)
+        ##### CRITIC TESTING #####
+        n_stimulus = 20
+        test_conf.test_critic_data = self.get_critic_test_data(list(range(n_stimulus)), 0, 0, 0, 0, 0, "pavro")
+        ##### GENERAL TESTING #####
         remaining = len(test_conf)
         for length in test_conf.get_tests_lengths():
             print("Testing length {}".format(length))
@@ -699,6 +709,61 @@ class Procedure(object):
         test_conf.dump(filepath, name=name)
         path = self.test_plot_path + "/" + name if plot_path is None else plot_path
         test_conf.plot(path)
+
+    def get_critic_test_data(self, stimulus_list, action_axis,
+            tilt_error, pan_error, vergence_error, cyclo_error,
+            pathway_name, n_test_points=1000, distance=2.0):
+        angular_speed = np.sqrt(pan_error ** 2 + tilt_error ** 2)
+        direction = angle(pan_error, tilt_error)
+        n_stimulus = len(stimulus_list)
+        results = np.zeros(shape=(n_test_points, n_stimulus), dtype=critic_test_dtype)
+        if action_axis == 0:
+            actions = np.stack([
+                np.linspace(-1, 1, n_test_points),
+                np.zeros(n_test_points),
+            ], axis=-1)
+        else:
+            actions = np.stack([
+                np.zeros(n_test_points),
+                np.linspace(-1, 1, n_test_points),
+            ], axis=-1)
+        while len(stimulus_list):
+            stimulus_processed_now = stimulus_list[:self.n_simulations]
+            stimulus_list = stimulus_list[self.n_simulations:]
+            n_processed_now = len(stimulus_processed_now)
+            with self.simulation_pool.specific(list(range(n_processed_now))):
+                self.episode_reset_uniform_motion_screen(
+                    start_distances=[distance] * n_processed_now,
+                    depth_speeds=[0] * n_processed_now,
+                    angular_speeds=[angular_speed] * n_processed_now,
+                    directions=[direction] * n_processed_now,
+                    texture_ids=stimulus_processed_now,
+                    preinit=True,
+                )
+                self.episode_reset_head(
+                    vergence=[distance_to_vergence(distance) - vergence_error] * n_processed_now,
+                    cyclo=[cyclo_error] * n_processed_now,
+                )
+                vision_before = self.get_vision(color_scaling=self.color_scaling)
+                self.simulation_pool.step_sim()
+                vision_after = self.get_vision(color_scaling=self.color_scaling)
+                pavro_vision = vision_after
+                magno_vision = self.merge_before_after(vision_before, vision_after)
+
+            for i in range(n_processed_now):
+                repeated_magno_vision = {scale: np.repeat(v[i:i + 1], n_test_points, axis=0) for scale, v in magno_vision.items()}
+                repeated_pavro_vision = {scale: np.repeat(v[i:i + 1], n_test_points, axis=0) for scale, v in pavro_vision.items()}
+                if pathway_name == "magno":
+                    vision = repeated_magno_vision
+                elif pathway_name == "pavro":
+                    vision = repeated_pavro_vision
+                else:
+                    raise ValueError("Unrecognized pathway name {}".format(pathway_name))
+                return_estimates = self.agent.get_return_estimates(vision, actions, pathway_name)
+                gradient = self.agent.get_gradient(vision, actions, pathway_name)
+                results["return_estimates"][:, stimulus_processed_now[i]] = return_estimates[..., 0]
+                results["gradient"][:, stimulus_processed_now[i]] = gradient
+        return results
 
     def accumulate_log_data(self,
             pavro_return_estimates, pavro_critic_targets, pavro_recerr,

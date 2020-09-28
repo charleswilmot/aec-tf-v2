@@ -30,9 +30,11 @@ def test(cfg):
     relative_checkpoint_path = "../checkpoints/" + Path(cfg.path).stem
     with Procedure(agent_conf, buffer_conf, simulation_conf,
             procedure_conf) as procedure:
+        print("[TEST] restoring from checkpoint")
         procedure.restore(relative_checkpoint_path)
+        print("[TEST] start tests")
         procedure.test(test_conf_path=cfg.test_conf_path + "/" + cfg.test_conf_name)
-
+        print("[TEST] finished, exiting")
 
 if __name__ == '__main__':
     main()

@@ -8,7 +8,7 @@ config:
   - class_name: CriticPerScaleConv2D
     config:
       activation: relu
-      filters: 64
+      filters: 16
       kernel_size:
       - 2
       - 2
