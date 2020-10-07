@@ -81,57 +81,12 @@ def get_partition_reservation():
     print("no free space")
     # OPTION 2
     print("checking OPTION 3 ... ", end="")
-    if node_list_availability(["jetski"]):
+    if node_list_availability(["jetski", "speedboat"]):
         print("free space available, sending job")
         return "sleuths", "triesch-shared"
     print("no free space")
     print("No space available on the cluster. Defaulting to turbine/vane OPTION 1")
     return "sleuths", None
-
-
-def node_to_n_jobs():
-    nodes = os.popen(
-        'squeue -h -u wilmot -O nodelist'
-    ).read().strip('\n').replace(' ', '').split("\n")
-    ret = defaultdict(int)
-    for node in nodes:
-        ret[node] += 1
-    return ret
-
-
-def reservation_to_n_jobs():
-    reservations = os.popen(
-        'squeue -h -u wilmot -O reservation'
-    ).read().strip("\n").replace(' ', '').split("\n")
-    ret = defaultdict(int)
-    for reservation in reservations:
-        ret[reservation] += 1
-    return ret
-
-
-def next_reservation():
-    nodes_used = node_to_n_jobs()
-    reservations = reservation_to_n_jobs()
-    nodes = ["jetski", "turbine", "vane"]
-    free_cpus = {node: get_n_free_cpus(node) for node in nodes}
-    free_gpus = {node: get_n_free_gpus(node) for node in nodes}
-    for node in nodes:
-        cpus = free_cpus[node]
-        gpus = free_gpus[node]
-        print(node, "free cpus:", cpus, "free gpus:", gpus)
-    reservation = ""
-    if free_cpus["jetski"] >= 10 and free_gpus["jetski"] > 0:
-        reservation = "--reservation triesch-shared"
-    if reservations["triesch-shared"] * 200 < reservations["(null)"]:
-        reservation = "--reservation triesch-shared"
-    else:
-        reservation = ""
-    print("reservation: ", reservation)
-    return reservation
-
-
-def additional_args():
-    return " hydra.run.dir=" + os.getcwd() + "\\\n"
 
 
 def get_job_name():
