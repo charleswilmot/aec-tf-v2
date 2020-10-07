@@ -21,8 +21,10 @@ dttest_result = np.dtype([
     ("tilt_error", np.float32),
     ("recerr_magno", np.float32),
     ("recerr_pavro", np.float32),
-    ("critic_magno", np.float32),
-    ("critic_pavro", np.float32),
+    ("tilt_return_estimates", np.float32),
+    ("pan_return_estimates", np.float32),
+    ("vergence_return_estimates", np.float32),
+    ("cyclo_return_estimates", np.float32),
     ("pan_pos", np.float32),
     ("tilt_pos", np.float32),
     ("vergence_pos", np.float32),
@@ -35,12 +37,7 @@ dttest_result = np.dtype([
     ("tilt_action", np.float32),
     ("vergence_action", np.float32),
     ("cyclo_action", np.float32),
-    ("pan_gradient", np.float32),
-    ("tilt_gradient", np.float32),
-    ("vergence_gradient", np.float32),
-    ("cyclo_gradient", np.float32),
 ])
-
 
 def dttest_data(n_iterations):
     return np.dtype([
@@ -463,7 +460,7 @@ class TestDataContainer:
             data = self.data_by_name("pan_speed_trajectory", dim0="conf.pan_error", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_magno"][:N],
+                data["result"]["pan_return_estimates"][:N],
                 data["result"]["recerr_magno"][:N],
                 xlabel="pan",
                 ylabel="Reward"
@@ -473,7 +470,7 @@ class TestDataContainer:
             data = self.data_by_name("tilt_speed_trajectory", dim0="conf.tilt_error", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_magno"][:N],
+                data["result"]["tilt_return_estimates"][:N],
                 data["result"]["recerr_magno"][:N],
                 xlabel="tilt",
             )
@@ -482,7 +479,7 @@ class TestDataContainer:
             data = self.data_by_name("vergence_trajectory", dim0="conf.vergence_error", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_pavro"][:N],
+                data["result"]["vergence_return_estimates"][:N],
                 data["result"]["recerr_pavro"][:N],
                 xlabel="vergence",
             )
@@ -491,7 +488,7 @@ class TestDataContainer:
             data = self.data_by_name("cyclo_trajectory", dim0="conf.cyclo_pos", sort_order="conf.stimulus")
             plot.critic_error_wrt_episode(
                 ax,
-                data["result"]["critic_pavro"][:N],
+                data["result"]["cyclo_return_estimates"][:N],
                 data["result"]["recerr_pavro"][:N],
                 xlabel="cyclo",
             )
@@ -551,7 +548,7 @@ class TestDataContainer:
             plot.scatter_plot(
                 ax,
                 (data["result"]["recerr_magno"][..., :-1] - data["result"]["recerr_magno"][..., 1:]) * 600,
-                data["result"]["critic_magno"][..., :-1],
+                data["result"]["pan_return_estimates"][..., :-1],
                 xlabel="pan reward",
                 ylabel="Critic"
             )
@@ -562,7 +559,7 @@ class TestDataContainer:
             plot.scatter_plot(
                 ax,
                 (data["result"]["recerr_magno"][..., :-1] - data["result"]["recerr_magno"][..., 1:]) * 600,
-                data["result"]["critic_magno"][..., :-1],
+                data["result"]["tilt_return_estimates"][..., :-1],
                 xlabel="tilt",
             )
 
@@ -572,7 +569,7 @@ class TestDataContainer:
             plot.scatter_plot(
                 ax,
                 (data["result"]["recerr_pavro"][..., :-1] - data["result"]["recerr_pavro"][..., 1:]) * 600,
-                data["result"]["critic_pavro"][..., :-1],
+                data["result"]["vergence_return_estimates"][..., :-1],
                 xlabel="vergence",
             )
 
@@ -582,7 +579,7 @@ class TestDataContainer:
             plot.scatter_plot(
                 ax,
                 (data["result"]["recerr_pavro"][..., :-1] - data["result"]["recerr_pavro"][..., 1:]) * 600,
-                data["result"]["critic_pavro"][..., :-1],
+                data["result"]["cyclo_return_estimates"][..., :-1],
                 xlabel="cyclo",
             )
 
@@ -595,7 +592,7 @@ class TestDataContainer:
             abs_error = np.abs(data["result"]["pan_error"])
             plot.scatter_plot(
                 ax,
-                data["result"]["critic_magno"][..., :-1],
+                data["result"]["pan_return_estimates"][..., :-1],
                 abs_error[..., :-1] - abs_error[..., 1:],
                 xlabel="delta pan error",
                 ylabel="Predicted return"
@@ -606,7 +603,7 @@ class TestDataContainer:
             abs_error = np.abs(data["result"]["tilt_error"])
             plot.scatter_plot(
                 ax,
-                data["result"]["critic_magno"][..., :-1],
+                data["result"]["tilt_return_estimates"][..., :-1],
                 abs_error[..., :-1] - abs_error[..., 1:],
                 xlabel="tilt",
             )
@@ -616,7 +613,7 @@ class TestDataContainer:
             abs_error = np.abs(data["result"]["vergence_error"])
             plot.scatter_plot(
                 ax,
-                data["result"]["critic_pavro"][..., :-1],
+                data["result"]["vergence_return_estimates"][..., :-1],
                 abs_error[..., :-1] - abs_error[..., 1:],
                 xlabel="vergence",
             )
@@ -626,78 +623,10 @@ class TestDataContainer:
             abs_error = np.abs(data["result"]["cyclo_pos"])
             plot.scatter_plot(
                 ax,
-                data["result"]["critic_pavro"][..., :-1],
+                data["result"]["cyclo_return_estimates"][..., :-1],
                 abs_error[..., :-1] - abs_error[..., 1:],
                 xlabel="cyclo",
             )
-
-    def plot_gradient_wrt_action_error(self, path, save=True):
-        if self.missing_data("pan_speed_trajectory", "tilt_speed_trajectory", "vergence_trajectory", "cyclo_trajectory"):
-            return
-        with plot.FigureManager(path + "/gradient.png", save=save) as fig:
-            ax = fig.add_subplot(141)
-            data = self.data_by_name("pan_speed_trajectory")
-            plot.scatter_plot(
-                ax,
-                data["result"]["pan_error"][..., 1:],
-                data["result"]["pan_gradient"][..., :-1],
-                xlabel="pan error",
-                ylabel="Gradient"
-            )
-
-            ax = fig.add_subplot(142)
-            data = self.data_by_name("tilt_speed_trajectory")
-            plot.scatter_plot(
-                ax,
-                data["result"]["tilt_error"][..., 1:],
-                data["result"]["tilt_gradient"][..., :-1],
-                xlabel="tilt",
-            )
-
-            ax = fig.add_subplot(143)
-            data = self.data_by_name("vergence_trajectory")
-            plot.scatter_plot(
-                ax,
-                data["result"]["vergence_error"][..., 1:],
-                data["result"]["vergence_gradient"][..., :-1],
-                xlabel="vergence",
-            )
-
-            ax = fig.add_subplot(144)
-            data = self.data_by_name("cyclo_trajectory")
-            plot.scatter_plot(
-                ax,
-                data["result"]["cyclo_pos"][..., 1:],
-                data["result"]["cyclo_gradient"][..., :-1],
-                xlabel="cyclo",
-            )
-
-    def plot_critic_wrt_action(self, path, save=True):
-        if not hasattr(self, "test_critic_data") or self.test_critic_data is None:
-            return
-        with plot.FigureManager(path + "/critic_wrt_action.png", save=save) as fig:
-            ax = fig.add_subplot(111)
-            x = np.linspace(-1, 1, self.test_critic_data.shape[0])
-            for data in self.test_critic_data.T:
-                ax.plot(x, data["return_estimates"], color='b', alpha=0.5)
-            ax.plot(x, np.mean(self.test_critic_data["return_estimates"], axis=-1), color='r')
-            ax.axvline(0, color='k', linestyle='--')
-            ax.set_xlabel("vergence action")
-            ax.set_ylabel("critic estimate")
-
-    def plot_gradient_wrt_action(self, path, save=True):
-        if not hasattr(self, "test_critic_data") or self.test_critic_data is None:
-            return
-        with plot.FigureManager(path + "/gradient_wrt_action.png", save=save) as fig:
-            ax = fig.add_subplot(111)
-            x = np.linspace(-1, 1, self.test_critic_data.shape[0])
-            for data in self.test_critic_data.T:
-                ax.plot(x, data["gradient"][:, 0], color='b', alpha=0.5)
-            ax.plot(x, np.mean(self.test_critic_data["gradient"][..., 0], axis=-1), color='r')
-            ax.axvline(0, color='k', linestyle='--')
-            ax.axhline(0, color='k', linestyle='--')
-            ax.set_xlabel("vergence action")
-            ax.set_ylabel("gradient wrt vergence")
 
     def plot(self, path, save=True):
         os.makedirs(path, exist_ok=True)
@@ -710,9 +639,6 @@ class TestDataContainer:
         self.plot_reward_wrt_delta_error(path, save=save)
         self.plot_critic_wrt_delta_error(path, save=save)
         self.plot_critic_wrt_reward(path, save=save)
-        self.plot_gradient_wrt_action_error(path, save=save)
-        self.plot_critic_wrt_action(path, save=save)
-        self.plot_gradient_wrt_action(path, save=save)
 
 def test_case(stimulus, object_distance, vergence_error, cyclo_pos, pan_error, tilt_error, n_iterations):
     return np.array((

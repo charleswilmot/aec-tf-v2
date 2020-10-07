@@ -81,21 +81,20 @@ class Procedure(object):
         self.updates_per_sample = procedure_conf.updates_per_sample
         self.batch_size = procedure_conf.batch_size
         self.n_simulations = simulation_conf.n
-        self.action_scaling = np.array(list(procedure_conf.action_scaling))[np.newaxis]
         self.reward_scaling = procedure_conf.reward_scaling
         self.test_dump_path = "./tests/"
         self.test_plot_path = "./plots/"
         self.test_conf = TestDataContainer.load(procedure_conf.test_conf_path)
         #    HPARAMS
         self._hparams = OrderedDict([
-            ("policy_LR", agent_conf.policy_learning_rate),
             ("critic_LR", agent_conf.critic_learning_rate),
             ("encoder_LR", agent_conf.encoder_learning_rate),
             ("buffer", buffer_conf.size),
             ("update_rate", procedure_conf.updates_per_sample),
             ("ep_length", procedure_conf.episode_length),
             ("batch_size", procedure_conf.batch_size),
-            ("noise_std", agent_conf.exploration.stddev),
+            ("expl_prob", agent_conf.exploration.prob),
+            ("expl_temp", agent_conf.exploration.temperature),
         ])
         #   OBJECTS
         self.agent = Agent(**agent_conf)
@@ -123,9 +122,11 @@ class Procedure(object):
         self.simulation_pool.step_sim()
         self.color_scaling = self.get_color_scaling()
         print("[procedure] all simulation started")
+
         fake_frame_by_scale_pavro = self.get_vision()
         fake_frame_by_scale_magno = self.merge_before_after(fake_frame_by_scale_pavro, fake_frame_by_scale_pavro)
         self.agent.create_all_variables(fake_frame_by_scale_pavro, fake_frame_by_scale_magno)
+
         #   DEFINING DATA BUFFERS
         # training
         pavro_dtype = np.dtype([
@@ -136,19 +137,28 @@ class Procedure(object):
             (scale, np.float32, (scale_conf.resolution, scale_conf.resolution, 12))
             for scale, scale_conf in agent_conf.scales.items()
         ])
-        n_pavro_joints = len(agent_conf.pathways["pavro"].joints)
-        n_magno_joints = len(agent_conf.pathways["magno"].joints)
+        n_pavro_joints = 2
+        n_magno_joints = 2
+
         self._train_data_type = np.dtype([
             ("pavro_vision", pavro_dtype),
             ("magno_vision", magno_dtype),
-            ("pavro_noisy_actions", np.float32, (n_pavro_joints,)),
-            ("magno_noisy_actions", np.float32, (n_magno_joints,)),
+            ("tilt_actions_indices", np.int32),
+            ("pan_actions_indices", np.int32),
+            ("vergence_actions_indices", np.int32),
+            ("cyclo_actions_indices", np.int32),
+            ("tilt_noisy_actions_indices", np.int32),
+            ("pan_noisy_actions_indices", np.int32),
+            ("vergence_noisy_actions_indices", np.int32),
+            ("cyclo_noisy_actions_indices", np.int32),
             ("pavro_critic_targets", np.float32),
             ("magno_critic_targets", np.float32),
             ("pavro_recerr", np.float32),
             ("magno_recerr", np.float32),
-            ("pavro_return_estimates", np.float32),
-            ("magno_return_estimates", np.float32),
+            ("tilt_return_estimates", np.float32),
+            ("pan_return_estimates", np.float32),
+            ("vergence_return_estimates", np.float32),
+            ("cyclo_return_estimates", np.float32),
         ])
         self._train_data_buffer = np.zeros(
             shape=(self.n_simulations, self.episode_length),
@@ -158,14 +168,18 @@ class Procedure(object):
         self._evaluation_data_type = np.dtype([
             ("pavro_vision", pavro_dtype),
             ("magno_vision", magno_dtype),
-            ("pavro_pure_actions", np.float32, (n_pavro_joints,)),
-            ("magno_pure_actions", np.float32, (n_magno_joints,)),
+            ("tilt_actions_indices", np.int32),
+            ("pan_actions_indices", np.int32),
+            ("vergence_actions_indices", np.int32),
+            ("cyclo_actions_indices", np.int32),
             ("pavro_recerr", np.float32),
             ("magno_recerr", np.float32),
             ("pavro_critic_targets", np.float32),
-            ("pavro_return_estimates", np.float32),
             ("magno_critic_targets", np.float32),
-            ("magno_return_estimates", np.float32),
+            ("tilt_return_estimates", np.float32),
+            ("pan_return_estimates", np.float32),
+            ("vergence_return_estimates", np.float32),
+            ("cyclo_return_estimates", np.float32),
         ])
         self._evaluation_data_buffer = np.zeros(
             shape=(self.n_simulations, self.episode_length),
@@ -176,29 +190,32 @@ class Procedure(object):
         self.n_exploration_episodes = 0
         self.n_evaluation_episodes = 0
         self.n_transition_gathered = 0
-        self.n_policy_training = 0
         self.n_critic_training = 0
         self.n_encoder_training = 0
         self.n_global_training = 0
 
-        # TENSORBOARD LOGGING
+        ### TENSORBOARD LOGGING ###
         self.tb = {}
+        # TRAINING
         self.tb["training"] = {}
-        self.tb["training"]["policy"] = {}
-        self.tb["training"]["policy"]["pavro_loss"] = Mean(
-            "training/policy_pavro_loss", dtype=tf.float32)
-        self.tb["training"]["policy"]["magno_loss"] = Mean(
-            "training/policy_magno_loss", dtype=tf.float32)
+        # critics
         self.tb["training"]["critic"] = {}
-        self.tb["training"]["critic"]["pavro_loss"] = Mean(
-            "training/critic_pavro_loss", dtype=tf.float32)
-        self.tb["training"]["critic"]["magno_loss"] = Mean(
-            "training/critic_magno_loss", dtype=tf.float32)
+        self.tb["training"]["critic"]["critic_tilt_loss"] = Mean(
+            "training/critic_critic_tilt_loss", dtype=tf.float32)
+        self.tb["training"]["critic"]["critic_pan_loss"] = Mean(
+            "training/critic_critic_pan_loss", dtype=tf.float32)
+        self.tb["training"]["critic"]["critic_vergence_loss"] = Mean(
+            "training/critic_critic_vergence_loss", dtype=tf.float32)
+        self.tb["training"]["critic"]["critic_cyclo_loss"] = Mean(
+            "training/critic_critic_cyclo_loss", dtype=tf.float32)
+        # encoders
         self.tb["training"]["encoders"] = {}
         self.tb["training"]["encoders"]["pavro_loss"] = Mean(
             "training/encoder_pavro_loss", dtype=tf.float32)
         self.tb["training"]["encoders"]["magno_loss"] = Mean(
             "training/encoder_magno_loss", dtype=tf.float32)
+
+        # COLLECTION
         self.tb["collection"] = {}
         self.tb["collection"]["exploration"] = {}
         self.tb["collection"]["evaluation"] = {}
@@ -234,21 +251,28 @@ class Procedure(object):
             "collection/exploration_final_pan_error", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["final_pan_error"] = Mean(
             "collection/evaluation_final_pan_error", dtype=tf.float32)
-        self.tb["collection"]["exploration"]["critic_snr_pavro"] = Mean(
-            "collection/exploration_critic_snr_pavro_db", dtype=tf.float32)
-        self.tb["collection"]["evaluation"]["critic_snr_pavro"] = Mean(
-            "collection/evaluation_critic_snr_pavro_db", dtype=tf.float32)
-        self.tb["collection"]["exploration"]["critic_snr_magno"] = Mean(
-            "collection/exploration_critic_snr_magno_db", dtype=tf.float32)
-        self.tb["collection"]["evaluation"]["critic_snr_magno"] = Mean(
-            "collection/evaluation_critic_snr_magno_db", dtype=tf.float32)
+        self.tb["collection"]["exploration"]["critic_snr_tilt"] = Mean(
+            "collection/exploration_critic_snr_tilt_db", dtype=tf.float32)
+        self.tb["collection"]["evaluation"]["critic_snr_tilt"] = Mean(
+            "collection/evaluation_critic_snr_tilt_db", dtype=tf.float32)
+        self.tb["collection"]["exploration"]["critic_snr_pan"] = Mean(
+            "collection/exploration_critic_snr_pan_db", dtype=tf.float32)
+        self.tb["collection"]["evaluation"]["critic_snr_pan"] = Mean(
+            "collection/evaluation_critic_snr_pan_db", dtype=tf.float32)
+        self.tb["collection"]["exploration"]["critic_snr_vergence"] = Mean(
+            "collection/exploration_critic_snr_vergence_db", dtype=tf.float32)
+        self.tb["collection"]["evaluation"]["critic_snr_vergence"] = Mean(
+            "collection/evaluation_critic_snr_vergence_db", dtype=tf.float32)
+        self.tb["collection"]["exploration"]["critic_snr_cyclo"] = Mean(
+            "collection/exploration_critic_snr_cyclo_db", dtype=tf.float32)
+        self.tb["collection"]["evaluation"]["critic_snr_cyclo"] = Mean(
+            "collection/evaluation_critic_snr_cyclo_db", dtype=tf.float32)
         #
         self.summary_writer = tf.summary.create_file_writer("logs")
         with self.summary_writer.as_default():
             hp.hparams(self._hparams)
         # TREE STRUCTURE
         os.makedirs('./replays', exist_ok=True)
-        os.makedirs('./visualization_data', exist_ok=True)
         os.makedirs(self.test_dump_path, exist_ok=True)
         os.makedirs(self.test_plot_path, exist_ok=True)
 
@@ -259,7 +283,7 @@ class Procedure(object):
                 metric.reset_states()
 
     def log_summaries(self, exploration=True, evaluation=True, critic=True,
-            policy=True, encoders=True):
+            encoders=True):
         if exploration:
             self.log_metrics(
                 "collection",
@@ -277,12 +301,6 @@ class Procedure(object):
                 "training",
                 "critic",
                 self.n_critic_training
-            )
-        if policy:
-            self.log_metrics(
-                "training",
-                "policy",
-                self.n_policy_training
             )
         if encoders:
             self.log_metrics(
@@ -349,6 +367,14 @@ class Procedure(object):
             for scale_name in vision_list[0]
         }
 
+    def merge_before_after(self, before, after):
+        return {
+            scale_name: np.concatenate(
+                [before[scale_name], after[scale_name]],
+                axis=-1
+            ) for scale_name in before
+        }
+
     def get_color_scaling(self):
         self.simulation_pool.episode_reset_head(vergence=0, cyclo=0)
         data = []
@@ -381,13 +407,10 @@ class Procedure(object):
 
     def apply_action(self, actions):
         with self.simulation_pool.distribute_args():
-            self.simulation_pool.apply_action(actions * self.action_scaling)
+            self.simulation_pool.apply_action(actions)
 
     def get_joints_errors(self):
         return tuple(zip(*self.simulation_pool.get_joints_errors()))
-
-    def get_joints_velocities(self):
-        return tuple(zip(*self.simulation_pool.get_joints_velocities()))
 
     def get_joints_positions(self):
         return tuple(zip(*self.simulation_pool.get_joints_positions()))
@@ -395,13 +418,13 @@ class Procedure(object):
     def get_joints_velocities(self):
         return tuple(zip(*self.simulation_pool.get_joints_velocities()))
 
-    def merge_before_after(self, before, after):
-        return {
-            scale_name: np.concatenate(
-                [before[scale_name], after[scale_name]],
-                axis=-1
-            ) for scale_name in before
-        }
+    def actions_indices_to_actions(self, tilt, pan, vergence, cyclo):
+        actions = np.zeros(shape=(tilt.shape[0], 4))
+        actions[:, 0] = self.agent.tilt_action_set[tilt]
+        actions[:, 1] = self.agent.pan_action_set[pan]
+        actions[:, 2] = self.agent.vergence_action_set[vergence]
+        actions[:, 3] = self.agent.cyclo_action_set[cyclo]
+        return actions
 
     def record(self, exploration=False, n_episodes=1, video_name='replay', resolution=(320, 240)):
         half_size = (resolution[1] // 2, resolution[0] // 2)
@@ -425,17 +448,24 @@ class Procedure(object):
             tilt_error, pan_error, vergence_error = self.get_joints_errors()
             tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
             tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
-            pavro_recerr = self.agent.get_encoder_loss(pavro_vision, "pavro")
-            magno_recerr = self.agent.get_encoder_loss(magno_vision, "magno")
+            data = self.agent(pavro_vision, magno_vision)
             if exploration:
-                _, pavro_noisy_actions = self.agent.get_actions(pavro_vision, "pavro", exploration=True)
-                _, magno_noisy_actions = self.agent.get_actions(magno_vision, "magno", exploration=True)
-                actions = np.concatenate([magno_noisy_actions, pavro_noisy_actions], axis=-1)
+                actions = self.actions_indices_to_actions(
+                    data["tilt_noisy_actions_indices"].numpy(),
+                    data["pan_noisy_actions_indices"].numpy(),
+                    data["vergence_noisy_actions_indices"].numpy(),
+                    data["cyclo_noisy_actions_indices"].numpy(),
+                )
             else:
-                pavro_pure_actions = self.agent.get_actions(pavro_vision, "pavro")
-                magno_pure_actions = self.agent.get_actions(magno_vision, "magno")
-                actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
+                actions = self.actions_indices_to_actions(
+                    data["tilt_actions_indices"].numpy(),
+                    data["pan_actions_indices"].numpy(),
+                    data["vergence_actions_indices"].numpy(),
+                    data["cyclo_actions_indices"].numpy(),
+                )
             self.apply_action(actions)
+            pavro_recerr = data["pavro_recerr"]
+            magno_recerr = data["magno_recerr"]
             for i, (writer, left_right) in enumerate(zip(writers, left_rights)):
                 ana = anaglyph(left_right)
                 # top = ((left_right[::2, ::2, :3] + 1) * 127.5).astype(np.uint8)
@@ -498,26 +528,43 @@ class Procedure(object):
             vision_after = self.get_vision()
             pavro_vision = vision_after
             magno_vision = self.merge_before_after(vision_before, vision_after)
-            pavro_pure_actions, pavro_noisy_actions = self.agent.get_actions(
-                pavro_vision, "pavro", exploration=True)
-            magno_pure_actions, magno_noisy_actions = self.agent.get_actions(
-                magno_vision, "magno", exploration=True)
-            pure_actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
-            noisy_actions = np.concatenate([magno_noisy_actions, pavro_noisy_actions], axis=-1)
-            pavro_recerr = self.agent.get_encoder_loss(pavro_vision, "pavro") # can be done in batch processing mode after the loop
-            magno_recerr = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
-            pavro_critic = self.agent.get_return_estimates(pavro_vision, pavro_noisy_actions, "pavro") # can be done in batch processing mode after the loop
-            magno_critic = self.agent.get_return_estimates(magno_vision, magno_noisy_actions, "magno") # can be done in batch processing mode after the loop
+            data = self.agent(pavro_vision, magno_vision)
+            noisy_actions = self.actions_indices_to_actions(
+                data["tilt_noisy_actions_indices"].numpy(),
+                data["pan_noisy_actions_indices"].numpy(),
+                data["vergence_noisy_actions_indices"].numpy(),
+                data["cyclo_noisy_actions_indices"].numpy(),
+            )
             for scale_name in pavro_vision:
                 self._train_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
                 self._train_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
-            self._train_data_buffer[:, iteration]["pavro_noisy_actions"] = pavro_noisy_actions
-            self._train_data_buffer[:, iteration]["magno_noisy_actions"] = magno_noisy_actions
+            self._train_data_buffer[:, iteration]["tilt_actions_indices"] = data["tilt_actions_indices"]
+            self._train_data_buffer[:, iteration]["pan_actions_indices"] = data["pan_actions_indices"]
+            self._train_data_buffer[:, iteration]["vergence_actions_indices"] = data["vergence_actions_indices"]
+            self._train_data_buffer[:, iteration]["cyclo_actions_indices"] = data["cyclo_actions_indices"]
+            self._train_data_buffer[:, iteration]["tilt_noisy_actions_indices"] = data["tilt_noisy_actions_indices"]
+            self._train_data_buffer[:, iteration]["pan_noisy_actions_indices"] = data["pan_noisy_actions_indices"]
+            self._train_data_buffer[:, iteration]["vergence_noisy_actions_indices"] = data["vergence_noisy_actions_indices"]
+            self._train_data_buffer[:, iteration]["cyclo_noisy_actions_indices"] = data["cyclo_noisy_actions_indices"]
             # not necessary for training but useful for logging:
-            self._train_data_buffer[:, iteration]["pavro_recerr"] = pavro_recerr
-            self._train_data_buffer[:, iteration]["magno_recerr"] = magno_recerr
-            self._train_data_buffer[:, iteration]["pavro_return_estimates"] = pavro_critic[..., 0]
-            self._train_data_buffer[:, iteration]["magno_return_estimates"] = magno_critic[..., 0]
+            self._train_data_buffer[:, iteration]["pavro_recerr"] = data["pavro_recerr"]
+            self._train_data_buffer[:, iteration]["magno_recerr"] = data["magno_recerr"]
+            self._train_data_buffer[:, iteration]["tilt_return_estimates"] = data["tilt_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["tilt_noisy_actions_indices"].numpy()
+            ]
+            self._train_data_buffer[:, iteration]["pan_return_estimates"] = data["pan_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["pan_noisy_actions_indices"].numpy()
+            ]
+            self._train_data_buffer[:, iteration]["vergence_return_estimates"] = data["vergence_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["vergence_noisy_actions_indices"].numpy()
+            ]
+            self._train_data_buffer[:, iteration]["cyclo_return_estimates"] = data["cyclo_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["cyclo_noisy_actions_indices"].numpy()
+            ]
             self.apply_action(noisy_actions)
         # COMPUTE TARGET
         self._train_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
@@ -537,11 +584,13 @@ class Procedure(object):
         # LOG METRICS
         final_tilt_error, final_pan_error, final_vergence_error = self.get_joints_errors()
         self.accumulate_log_data(
-            pavro_return_estimates=self._train_data_buffer[:, :-1]["pavro_return_estimates"],
+            tilt_return_estimates=self._train_data_buffer[:, :-1]["tilt_return_estimates"],
+            pan_return_estimates=self._train_data_buffer[:, :-1]["pan_return_estimates"],
+            vergence_return_estimates=self._train_data_buffer[:, :-1]["vergence_return_estimates"],
+            cyclo_return_estimates=self._train_data_buffer[:, :-1]["cyclo_return_estimates"],
             pavro_critic_targets=self._train_data_buffer[:, :-1]["pavro_critic_targets"],
-            pavro_recerr=self._train_data_buffer["pavro_recerr"],
-            magno_return_estimates=self._train_data_buffer[:, :-1]["magno_return_estimates"],
             magno_critic_targets=self._train_data_buffer[:, :-1]["magno_critic_targets"],
+            pavro_recerr=self._train_data_buffer["pavro_recerr"],
             magno_recerr=self._train_data_buffer["magno_recerr"],
             final_vergence_error=final_vergence_error,
             final_tilt_error=final_tilt_error,
@@ -562,23 +611,39 @@ class Procedure(object):
             vision_after = self.get_vision()
             pavro_vision = vision_after
             magno_vision = self.merge_before_after(vision_before, vision_after)
-            pavro_pure_actions = self.agent.get_actions(pavro_vision, "pavro")
-            magno_pure_actions = self.agent.get_actions(magno_vision, "magno")
-            pure_actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
-            pavro_recerr = self.agent.get_encoder_loss(pavro_vision, "pavro") # can be done in batch processing mode after the loop
-            magno_recerr = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
-            pavro_critic = self.agent.get_return_estimates(pavro_vision, pavro_pure_actions, "pavro") # can be done in batch processing mode after the loop
-            magno_critic = self.agent.get_return_estimates(magno_vision, magno_pure_actions, "magno") # can be done in batch processing mode after the loop
+            data = self.agent(pavro_vision, magno_vision)
+            actions = self.actions_indices_to_actions(
+                data["tilt_actions_indices"].numpy(),
+                data["pan_actions_indices"].numpy(),
+                data["vergence_actions_indices"].numpy(),
+                data["cyclo_actions_indices"].numpy(),
+            )
             for scale_name in pavro_vision:
                 self._evaluation_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
                 self._evaluation_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
-            self._evaluation_data_buffer[:, iteration]["pavro_pure_actions"] = pavro_pure_actions
-            self._evaluation_data_buffer[:, iteration]["magno_pure_actions"] = magno_pure_actions
-            self._evaluation_data_buffer[:, iteration]["pavro_recerr"] = pavro_recerr
-            self._evaluation_data_buffer[:, iteration]["magno_recerr"] = magno_recerr
-            self._evaluation_data_buffer[:, iteration]["pavro_return_estimates"] = pavro_critic[..., 0]
-            self._evaluation_data_buffer[:, iteration]["magno_return_estimates"] = magno_critic[..., 0]
-            self.apply_action(pure_actions)
+            self._evaluation_data_buffer[:, iteration]["tilt_actions_indices"] = data["tilt_actions_indices"]
+            self._evaluation_data_buffer[:, iteration]["pan_actions_indices"] = data["pan_actions_indices"]
+            self._evaluation_data_buffer[:, iteration]["vergence_actions_indices"] = data["vergence_actions_indices"]
+            self._evaluation_data_buffer[:, iteration]["cyclo_actions_indices"] = data["cyclo_actions_indices"]
+            self._evaluation_data_buffer[:, iteration]["pavro_recerr"] = data["pavro_recerr"]
+            self._evaluation_data_buffer[:, iteration]["magno_recerr"] = data["magno_recerr"]
+            self._evaluation_data_buffer[:, iteration]["tilt_return_estimates"] = data["tilt_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["tilt_actions_indices"].numpy()
+            ]
+            self._evaluation_data_buffer[:, iteration]["pan_return_estimates"] = data["pan_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["pan_actions_indices"].numpy()
+            ]
+            self._evaluation_data_buffer[:, iteration]["vergence_return_estimates"] = data["vergence_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["vergence_actions_indices"].numpy()
+            ]
+            self._evaluation_data_buffer[:, iteration]["cyclo_return_estimates"] = data["cyclo_return_estimates"].numpy()[
+                np.arange(self.n_simulations),
+                data["cyclo_actions_indices"].numpy()
+            ]
+            self.apply_action(actions)
         # COMPUTE TARGET
         self._evaluation_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
             self._evaluation_data_buffer[:, :-1]["pavro_recerr"] -
@@ -594,11 +659,13 @@ class Procedure(object):
         # LOG METRICS
         final_tilt_error, final_pan_error, final_vergence_error = self.get_joints_errors()
         self.accumulate_log_data(
-            pavro_return_estimates=self._evaluation_data_buffer[:, 1:-1]["pavro_return_estimates"],
-            pavro_critic_targets=self._evaluation_data_buffer[:, 1:-1]["pavro_critic_targets"],
+            tilt_return_estimates=self._evaluation_data_buffer[:, :-1]["tilt_return_estimates"],
+            pan_return_estimates=self._evaluation_data_buffer[:, :-1]["pan_return_estimates"],
+            vergence_return_estimates=self._evaluation_data_buffer[:, :-1]["vergence_return_estimates"],
+            cyclo_return_estimates=self._evaluation_data_buffer[:, :-1]["cyclo_return_estimates"],
+            pavro_critic_targets=self._evaluation_data_buffer[:, :-1]["pavro_critic_targets"],
+            magno_critic_targets=self._evaluation_data_buffer[:, :-1]["magno_critic_targets"],
             pavro_recerr=self._evaluation_data_buffer["pavro_recerr"],
-            magno_return_estimates=self._evaluation_data_buffer[:, 1:-1]["magno_return_estimates"],
-            magno_critic_targets=self._evaluation_data_buffer[:, 1:-1]["magno_critic_targets"],
             magno_recerr=self._evaluation_data_buffer["magno_recerr"],
             final_vergence_error=final_vergence_error,
             final_tilt_error=final_tilt_error,
@@ -606,28 +673,6 @@ class Procedure(object):
             time=time_stop - time_start,
             exploration=False,
         )
-        # LOG ACTION HISTOGRAM
-        with self.summary_writer.as_default():
-            tf.summary.histogram(
-                "vergence",
-                self._evaluation_data_buffer["pavro_pure_actions"][..., 0].flatten(),
-                step=self.n_evaluation_episodes
-            )
-            tf.summary.histogram(
-                "cyclo",
-                self._evaluation_data_buffer["pavro_pure_actions"][..., 1].flatten(),
-                step=self.n_evaluation_episodes
-            )
-            tf.summary.histogram(
-                "tilt",
-                self._evaluation_data_buffer["magno_pure_actions"][..., 0].flatten(),
-                step=self.n_evaluation_episodes
-            )
-            tf.summary.histogram(
-                "pan",
-                self._evaluation_data_buffer["magno_pure_actions"][..., 1].flatten(),
-                step=self.n_evaluation_episodes
-            )
 
     def test(self, test_conf_path=None, dump_path=None, plot_path=None):
         if test_conf_path is None:
@@ -635,8 +680,8 @@ class Procedure(object):
         else:
             test_conf = TestDataContainer.load(test_conf_path)
         ##### CRITIC TESTING #####
-        n_stimulus = 20
-        test_conf.test_critic_data = self.get_critic_test_data(list(range(n_stimulus)), 0, 0, 0, 0, 0, "pavro")
+        # n_stimulus = 20
+        # test_conf.test_critic_data = self.get_critic_test_data(list(range(n_stimulus)), 0, 0, 0, 0, 0, "pavro")
         ##### GENERAL TESTING #####
         remaining = len(test_conf)
         for length in test_conf.get_tests_lengths():
@@ -668,29 +713,37 @@ class Procedure(object):
                         vision_after = self.get_vision(color_scaling=self.color_scaling)
                         pavro_vision = vision_after
                         magno_vision = self.merge_before_after(vision_before, vision_after)
-                        pavro_pure_actions = self.agent.get_actions(pavro_vision, "pavro")
-                        magno_pure_actions = self.agent.get_actions(magno_vision, "magno")
-                        pure_actions = np.concatenate([magno_pure_actions, pavro_pure_actions], axis=-1)
-                        recerr_pavro = self.agent.get_encoder_loss(pavro_vision, "pavro") # can be done in batch processing mode after the loop
-                        recerr_magno = self.agent.get_encoder_loss(magno_vision, "magno") # can be done in batch processing mode after the loop
-                        critic_pavro = self.agent.get_return_estimates(pavro_vision, pavro_pure_actions, "pavro")
-                        critic_magno = self.agent.get_return_estimates(magno_vision, magno_pure_actions, "magno")
-                        gradient_pavro = self.agent.get_gradient(pavro_vision, pavro_pure_actions, "pavro")
-                        gradient_magno = self.agent.get_gradient(magno_vision, magno_pure_actions, "magno")
+                        data = self.agent(pavro_vision, magno_vision)
+                        actions = self.actions_indices_to_actions(
+                            data["tilt_actions_indices"].numpy(),
+                            data["pan_actions_indices"].numpy(),
+                            data["vergence_actions_indices"].numpy(),
+                            data["cyclo_actions_indices"].numpy(),
+                        )
                         tilt_error, pan_error, vergence_error = self.get_joints_errors()
                         tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
                         tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
                         chunk["result"]["vergence_error"][:, iteration] = vergence_error
                         chunk["result"]["pan_error"][:, iteration] = pan_error
                         chunk["result"]["tilt_error"][:, iteration] = tilt_error
-                        chunk["result"]["recerr_magno"][:, iteration] = recerr_magno
-                        chunk["result"]["recerr_pavro"][:, iteration] = recerr_pavro
-                        chunk["result"]["critic_magno"][:, iteration] = critic_magno[..., 0]
-                        chunk["result"]["critic_pavro"][:, iteration] = critic_pavro[..., 0]
-                        chunk["result"]["tilt_gradient"][:, iteration] = gradient_magno[..., 0]
-                        chunk["result"]["pan_gradient"][:, iteration] = gradient_magno[..., 1]
-                        chunk["result"]["vergence_gradient"][:, iteration] = gradient_pavro[..., 0]
-                        chunk["result"]["cyclo_gradient"][:, iteration] = gradient_pavro[..., 1]
+                        chunk["result"]["recerr_magno"][:, iteration] = data["magno_recerr"]
+                        chunk["result"]["recerr_pavro"][:, iteration] = data["pavro_recerr"]
+                        chunk["result"]["tilt_return_estimates"][:, iteration] = data["tilt_return_estimates"].numpy()[
+                            np.arange(chunk_size),
+                            data["tilt_actions_indices"].numpy()
+                        ]
+                        chunk["result"]["pan_return_estimates"][:, iteration] = data["pan_return_estimates"].numpy()[
+                            np.arange(chunk_size),
+                            data["pan_actions_indices"].numpy()
+                        ]
+                        chunk["result"]["vergence_return_estimates"][:, iteration] = data["vergence_return_estimates"].numpy()[
+                            np.arange(chunk_size),
+                            data["vergence_actions_indices"].numpy()
+                        ]
+                        chunk["result"]["cyclo_return_estimates"][:, iteration] = data["cyclo_return_estimates"].numpy()[
+                            np.arange(chunk_size),
+                            data["cyclo_actions_indices"].numpy()
+                        ]
                         chunk["result"]["pan_pos"][:, iteration] = pan_pos
                         chunk["result"]["tilt_pos"][:, iteration] = tilt_pos
                         chunk["result"]["vergence_pos"][:, iteration] = vergence_pos
@@ -699,77 +752,78 @@ class Procedure(object):
                         chunk["result"]["tilt_speed"][:, iteration] = tilt_speed
                         chunk["result"]["vergence_speed"][:, iteration] = vergence_speed
                         chunk["result"]["cyclo_speed"][:, iteration] = cyclo_speed
-                        chunk["result"]["tilt_action"][:, iteration] = pure_actions[:, 0]
-                        chunk["result"]["pan_action"][:, iteration] = pure_actions[:, 1]
-                        chunk["result"]["vergence_action"][:, iteration] = pure_actions[:, 2]
-                        chunk["result"]["cyclo_action"][:, iteration] = pure_actions[:, 3]
-                        self.apply_action(pure_actions)
+                        chunk["result"]["tilt_action"][:, iteration] = actions[:, 0]
+                        chunk["result"]["pan_action"][:, iteration] = actions[:, 1]
+                        chunk["result"]["vergence_action"][:, iteration] = actions[:, 2]
+                        chunk["result"]["cyclo_action"][:, iteration] = actions[:, 3]
+                        self.apply_action(actions)
         filepath = self.test_dump_path if dump_path is None else dump_path
         name = "/{}_{:06d}".format(test_conf.name, self.n_exploration_episodes)
         test_conf.dump(filepath, name=name)
         path = self.test_plot_path + "/" + name if plot_path is None else plot_path
         test_conf.plot(path)
 
-    def get_critic_test_data(self, stimulus_list, action_axis,
-            tilt_error, pan_error, vergence_error, cyclo_error,
-            pathway_name, n_test_points=1000, distance=2.0):
-        angular_speed = np.sqrt(pan_error ** 2 + tilt_error ** 2)
-        direction = angle(pan_error, tilt_error)
-        n_stimulus = len(stimulus_list)
-        results = np.zeros(shape=(n_test_points, n_stimulus), dtype=critic_test_dtype)
-        if action_axis == 0:
-            actions = np.stack([
-                np.linspace(-1, 1, n_test_points),
-                np.zeros(n_test_points),
-            ], axis=-1)
-        else:
-            actions = np.stack([
-                np.zeros(n_test_points),
-                np.linspace(-1, 1, n_test_points),
-            ], axis=-1)
-        while len(stimulus_list):
-            stimulus_processed_now = stimulus_list[:self.n_simulations]
-            stimulus_list = stimulus_list[self.n_simulations:]
-            n_processed_now = len(stimulus_processed_now)
-            with self.simulation_pool.specific(list(range(n_processed_now))):
-                self.episode_reset_uniform_motion_screen(
-                    start_distances=[distance] * n_processed_now,
-                    depth_speeds=[0] * n_processed_now,
-                    angular_speeds=[angular_speed] * n_processed_now,
-                    directions=[direction] * n_processed_now,
-                    texture_ids=stimulus_processed_now,
-                    preinit=True,
-                )
-                self.episode_reset_head(
-                    vergence=[distance_to_vergence(distance) - vergence_error] * n_processed_now,
-                    cyclo=[cyclo_error] * n_processed_now,
-                )
-                vision_before = self.get_vision(color_scaling=self.color_scaling)
-                self.simulation_pool.step_sim()
-                vision_after = self.get_vision(color_scaling=self.color_scaling)
-                pavro_vision = vision_after
-                magno_vision = self.merge_before_after(vision_before, vision_after)
-
-            for i in range(n_processed_now):
-                repeated_magno_vision = {scale: np.repeat(v[i:i + 1], n_test_points, axis=0) for scale, v in magno_vision.items()}
-                repeated_pavro_vision = {scale: np.repeat(v[i:i + 1], n_test_points, axis=0) for scale, v in pavro_vision.items()}
-                if pathway_name == "magno":
-                    vision = repeated_magno_vision
-                elif pathway_name == "pavro":
-                    vision = repeated_pavro_vision
-                else:
-                    raise ValueError("Unrecognized pathway name {}".format(pathway_name))
-                return_estimates = self.agent.get_return_estimates(vision, actions, pathway_name)
-                gradient = self.agent.get_gradient(vision, actions, pathway_name)
-                results["return_estimates"][:, stimulus_processed_now[i]] = return_estimates[..., 0]
-                results["gradient"][:, stimulus_processed_now[i]] = gradient
-        return results
+    # def get_critic_test_data(self, stimulus_list, action_axis,
+    #         tilt_error, pan_error, vergence_error, cyclo_error,
+    #         pathway_name, n_test_points=1000, distance=2.0):
+    #     angular_speed = np.sqrt(pan_error ** 2 + tilt_error ** 2)
+    #     direction = angle(pan_error, tilt_error)
+    #     n_stimulus = len(stimulus_list)
+    #     results = np.zeros(shape=(n_test_points, n_stimulus), dtype=critic_test_dtype)
+    #     if action_axis == 0:
+    #         actions = np.stack([
+    #             np.linspace(-1, 1, n_test_points),
+    #             np.zeros(n_test_points),
+    #         ], axis=-1)
+    #     else:
+    #         actions = np.stack([
+    #             np.zeros(n_test_points),
+    #             np.linspace(-1, 1, n_test_points),
+    #         ], axis=-1)
+    #     while len(stimulus_list):
+    #         stimulus_processed_now = stimulus_list[:self.n_simulations]
+    #         stimulus_list = stimulus_list[self.n_simulations:]
+    #         n_processed_now = len(stimulus_processed_now)
+    #         with self.simulation_pool.specific(list(range(n_processed_now))):
+    #             self.episode_reset_uniform_motion_screen(
+    #                 start_distances=[distance] * n_processed_now,
+    #                 depth_speeds=[0] * n_processed_now,
+    #                 angular_speeds=[angular_speed] * n_processed_now,
+    #                 directions=[direction] * n_processed_now,
+    #                 texture_ids=stimulus_processed_now,
+    #                 preinit=True,
+    #             )
+    #             self.episode_reset_head(
+    #                 vergence=[distance_to_vergence(distance) - vergence_error] * n_processed_now,
+    #                 cyclo=[cyclo_error] * n_processed_now,
+    #             )
+    #             vision_before = self.get_vision(color_scaling=self.color_scaling)
+    #             self.simulation_pool.step_sim()
+    #             vision_after = self.get_vision(color_scaling=self.color_scaling)
+    #             pavro_vision = vision_after
+    #             magno_vision = self.merge_before_after(vision_before, vision_after)
+    #
+    #         for i in range(n_processed_now):
+    #             repeated_magno_vision = {scale: np.repeat(v[i:i + 1], n_test_points, axis=0) for scale, v in magno_vision.items()}
+    #             repeated_pavro_vision = {scale: np.repeat(v[i:i + 1], n_test_points, axis=0) for scale, v in pavro_vision.items()}
+    #             if pathway_name == "magno":
+    #                 vision = repeated_magno_vision
+    #             elif pathway_name == "pavro":
+    #                 vision = repeated_pavro_vision
+    #             else:
+    #                 raise ValueError("Unrecognized pathway name {}".format(pathway_name))
+    #             return_estimates = self.agent.get_return_estimates(vision, actions, pathway_name)
+    #             gradient = self.agent.get_gradient(vision, actions, pathway_name)
+    #             results["return_estimates"][:, stimulus_processed_now[i]] = return_estimates[..., 0]
+    #             results["gradient"][:, stimulus_processed_now[i]] = gradient
+    #     return results
 
     def accumulate_log_data(self,
-            pavro_return_estimates, pavro_critic_targets, pavro_recerr,
-            magno_return_estimates, magno_critic_targets, magno_recerr,
-            final_vergence_error, final_tilt_error, final_pan_error,
-            time, exploration):
+            tilt_return_estimates, pan_return_estimates,
+            vergence_return_estimates, cyclo_return_estimates,
+            pavro_critic_targets, magno_critic_targets, pavro_recerr,
+            magno_recerr, final_vergence_error, final_tilt_error,
+            final_pan_error, time, exploration):
         if exploration:
             tb = self.tb["collection"]["exploration"]
         else:
@@ -787,66 +841,69 @@ class Procedure(object):
         tb["final_tilt_error"](np.mean(np.abs(final_tilt_error)))
         tb["final_pan_error"](np.mean(np.abs(final_pan_error)))
         #
-        signal = pavro_critic_targets
-        noise = pavro_critic_targets - pavro_return_estimates
-        critic_snr_pavro = get_snr_db(signal, noise)
-        tb["critic_snr_pavro"](np.mean(critic_snr_pavro))
+        signal = magno_critic_targets
+        noise = magno_critic_targets - tilt_return_estimates
+        critic_snr_tilt = get_snr_db(signal, noise)
+        tb["critic_snr_tilt"](np.mean(critic_snr_tilt))
         #
         signal = magno_critic_targets
-        noise = magno_critic_targets - magno_return_estimates
-        critic_snr_magno = get_snr_db(signal, noise)
-        tb["critic_snr_magno"](np.mean(critic_snr_magno))
+        noise = magno_critic_targets - pan_return_estimates
+        critic_snr_pan = get_snr_db(signal, noise)
+        tb["critic_snr_pan"](np.mean(critic_snr_pan))
+        #
+        signal = pavro_critic_targets
+        noise = pavro_critic_targets - vergence_return_estimates
+        critic_snr_vergence = get_snr_db(signal, noise)
+        tb["critic_snr_vergence"](np.mean(critic_snr_vergence))
+        #
+        signal = pavro_critic_targets
+        noise = pavro_critic_targets - cyclo_return_estimates
+        critic_snr_cyclo = get_snr_db(signal, noise)
+        tb["critic_snr_cyclo"](np.mean(critic_snr_cyclo))
         #
 
-    def train(self, policy=True, critic=True, encoders=True):
+    def train(self, critic=True, encoders=True):
         data = self.buffer.sample(self.batch_size)
         tb = self.tb["training"]
-        for pathway_name in ["pavro", "magno"]:
-            frame_by_scale = {
-                scale_name: data["{}_vision".format(pathway_name)][scale_name]
-                for scale_name in self.scale_names
-            }
-            losses, action_grads = self.agent.train(
-                frame_by_scale,
-                data["{}_noisy_actions".format(pathway_name)],
-                data["{}_critic_targets".format(pathway_name)],
-                pathway_name,
-                policy=policy,
-                critic=critic,
-                encoders=encoders,
-            )
-            if policy:
-                tb["policy"]["{}_loss".format(pathway_name)](losses["policy"])
-                with self.summary_writer.as_default():
-                    if pathway_name == "magno":
-                        tf.summary.histogram("tilt_grad", action_grads[..., 0], step=self.n_policy_training)
-                        tf.summary.histogram("pan_grad", action_grads[..., 1], step=self.n_policy_training)
-                    elif pathway_name == "pavro":
-                        tf.summary.histogram("vergence_grad", action_grads[..., 0], step=self.n_policy_training)
-                        tf.summary.histogram("cyclo_grad", action_grads[..., 1], step=self.n_policy_training)
-            if critic:
-                tb["critic"]["{}_loss".format(pathway_name)](losses["critic"])
-            if encoders:
-                tb["encoders"]["{}_loss".format(pathway_name)](losses["encoders"])
-        if policy:
-            self.n_policy_training += 1
+        pavro_frame_by_scale = {
+            scale_name: data["pavro_vision"][scale_name]
+            for scale_name in self.scale_names
+        }
+        magno_frame_by_scale = {
+            scale_name: data["magno_vision"][scale_name]
+            for scale_name in self.scale_names
+        }
+        losses = self.agent.train(
+            pavro_frame_by_scale,
+            magno_frame_by_scale,
+            data["tilt_noisy_actions_indices"],
+            data["pan_noisy_actions_indices"],
+            data["vergence_noisy_actions_indices"],
+            data["cyclo_noisy_actions_indices"],
+            data["magno_critic_targets"],
+            data["pavro_critic_targets"],
+            encoders=encoders,
+            critic=critic)
         if critic:
+            tb["critic"]["critic_tilt_loss"](losses["critic_tilt"])
+            tb["critic"]["critic_pan_loss"](losses["critic_pan"])
+            tb["critic"]["critic_vergence_loss"](losses["critic_vergence"])
+            tb["critic"]["critic_cyclo_loss"](losses["critic_cyclo"])
             self.n_critic_training += 1
         if encoders:
+            tb["encoders"]["pavro_loss"](losses["pavro_encoders"])
+            tb["encoders"]["magno_loss"](losses["magno_encoders"])
             self.n_encoder_training += 1
         self.n_global_training += 1
         return losses
 
-    def collect_and_train(self, policy=True, critic=True, encoders=True):
+    def collect_and_train(self, critic=True, encoders=True):
         self.collect_data()
         while self.current_training_ratio < self.updates_per_sample:
-            self.train(policy=policy, critic=critic, encoders=encoders)
+            self.train(critic=critic, encoders=encoders)
 
-    def collect_train_and_log(self, policy=True, critic=True, encoders=True,
-            evaluation=False):
-        self.collect_and_train(policy=policy, critic=critic, encoders=encoders)
+    def collect_train_and_log(self, critic=True, encoders=True, evaluation=False):
+        self.collect_and_train(critic=critic, encoders=encoders)
         if evaluation:
             self.evaluate()
-        if evaluation:
-            self.log_summaries(exploration=True, evaluation=evaluation,
-                policy=policy, critic=critic, encoders=encoders)
+            self.log_summaries(exploration=True, evaluation=True, critic=critic, encoders=encoders)

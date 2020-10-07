@@ -1,4 +1,5 @@
 import hydra
+from omegaconf import OmegaConf
 from procedure import Procedure
 import os
 import tensorflow as tf
@@ -15,7 +16,7 @@ def main(cfg):
 
 
 def experiment(cfg):
-    print(cfg.pretty(), end="\n\n\n")
+    print(OmegaConf.to_yaml(cfg, resolve=True), end="\n\n\n")
     agent_conf = cfg.agent
     buffer_conf = cfg.buffer
     simulation_conf = cfg.simulation
@@ -26,8 +27,6 @@ def experiment(cfg):
         if experiment_conf.test_at_start:
             procedure.test()
         for episode_batch in range(n_episode_batch):
-            policy = (episode_batch + 1) % experiment_conf.policy_every == 0
-            policy = policy and procedure.n_exploration_episodes > experiment_conf.policy_after
             critic = (episode_batch + 1) % experiment_conf.critic_every == 0
             encoders = (episode_batch + 1) % experiment_conf.encoders_every == 0
             evaluation = (episode_batch + 1) % experiment_conf.evaluate_every == 0
@@ -35,10 +34,9 @@ def experiment(cfg):
             save = (episode_batch + 1) % experiment_conf.save_every == 0
             record = (episode_batch + 1) % experiment_conf.record_episode_every == 0
             print_info = (episode_batch + 1) % 10 == 0
-            print("batch {: 5d}\tevaluation:{}\tpolicy:{}\tcritic:{}\tencoders:{}\tsave:{}\trecord:{}".format(
+            print("batch {: 5d}\tevaluation:{}\tcritic:{}\tencoders:{}\tsave:{}\trecord:{}".format(
                 episode_batch + 1,
                 evaluation,
-                policy,
                 critic,
                 encoders,
                 save,
@@ -59,12 +57,11 @@ def experiment(cfg):
                 procedure.test()
             if save:
                 procedure.save()
-            procedure.collect_train_and_log(policy=policy, critic=critic, encoders=encoders, evaluation=evaluation)
+            procedure.collect_train_and_log(critic=critic, encoders=encoders, evaluation=evaluation)
             if print_info:
                 print('n_exploration_episodes  ...  ', procedure.n_exploration_episodes)
                 print('n_evaluation_episodes  ....  ', procedure.n_evaluation_episodes)
                 print('n_transition_gathered  ....  ', procedure.n_transition_gathered)
-                print('n_policy_training  ........  ', procedure.n_policy_training)
                 print('n_critic_training  ........  ', procedure.n_critic_training)
                 print('n_encoder_training  .......  ', procedure.n_encoder_training)
                 print('n_global_training  ........  ', procedure.n_global_training)

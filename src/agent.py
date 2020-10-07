@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow_probability as tfp
 from tensorflow import keras
 import numpy as np
 from custom_layers import custom_objects
@@ -9,144 +10,64 @@ def divide_no_nan(a, b, default=0.0):
     return np.divide(a, b, out=np.full_like(a, fill_value=default), where=b!=0)
 
 
+def to_model(conf):
+    return keras.models.model_from_yaml(
+        OmegaConf.to_yaml(conf, resolve=True),
+        custom_objects=custom_objects)
+
+
 class Agent(object):
     def __init__(self,
-            policy_learning_rate, critic_learning_rate, encoder_learning_rate,
+            critic_learning_rate, encoder_learning_rate, actions_neighbourhood_size,
             exploration, n_simulations, scales, pathways):
-        self.policy_learning_rate = policy_learning_rate
         self.critic_learning_rate = critic_learning_rate
         self.encoder_learning_rate = encoder_learning_rate
-        self.policy_optimizer = {}
-        self.critic_optimizer = {}
-        self.encoder_optimizer = {}
+        self.critic_optimizer = keras.optimizers.Adam(self.critic_learning_rate)
+        self.encoder_optimizer = keras.optimizers.Adam(self.encoder_learning_rate)
         self.pathways = pathways
         self.scales = scales
+        self.exploration_prob = exploration.prob
+        self.exploration_temperature = exploration.temperature
+        self.n_simulations = n_simulations
+        self.actions_neighbourhood_size = actions_neighbourhood_size
         self.models = {}
+        self.tilt_action_set = np.array(list(pathways.magno.actions.tilt))
+        self.pan_action_set = np.array(list(pathways.magno.actions.pan))
+        self.vergence_action_set = np.array(list(pathways.pavro.actions.vergence))
+        self.cyclo_action_set = np.array(list(pathways.pavro.actions.cyclo))
+        self.n_actions = {
+            "tilt": len(self.tilt_action_set),
+            "pan": len(self.pan_action_set),
+            "vergence": len(self.vergence_action_set),
+            "cyclo": len(self.cyclo_action_set),
+        }
         for pathway, pathway_conf in pathways.items():
-            #   POLICY
             self.models[pathway] = {}
-            self.models[pathway]["policy_model"] = \
-                keras.models.model_from_yaml(
-                    OmegaConf.to_yaml(pathway_conf.policy_model_arch, resolve=True),
-                    custom_objects=custom_objects
-                )
-            self.policy_optimizer[pathway] = keras.optimizers.Adam(self.policy_learning_rate)
-            #   CRITIC
-            self.models[pathway]["critic_model"] = \
-                keras.models.model_from_yaml(
-                    OmegaConf.to_yaml(pathway_conf.critic_model_arch, resolve=True),
-                    custom_objects=custom_objects
-                )
-            self.critic_optimizer[pathway] = keras.optimizers.Adam(self.critic_learning_rate)
-            #   ENCODERS / DECODERS
+            self.models[pathway]["critic_models"] = {}
             self.models[pathway]["encoder_models"] = {}
             self.models[pathway]["decoder_models"] = {}
+            #   CRITIC
+            for joint_name in pathway_conf.actions:
+                self.models[pathway]["critic_models"][joint_name] = \
+                    to_model(pathway_conf["{}_critic_model_arch".format(joint_name)])
+            #   ENCODERS / DECODERS
             for scale, scale_conf in scales.items():
                 self.models[pathway]["encoder_models"][scale] = \
-                    keras.models.model_from_yaml(
-                        OmegaConf.to_yaml(pathway_conf.encoder_model_arch, resolve=True),
-                        custom_objects=custom_objects
-                    )
+                    to_model(pathway_conf.encoder_model_arch)
                 self.models[pathway]["decoder_models"][scale] = \
-                    keras.models.model_from_yaml(
-                        OmegaConf.to_yaml(pathway_conf.decoder_model_arch, resolve=True),
-                        custom_objects=custom_objects
-                    )
-            self.encoder_optimizer[pathway] = keras.optimizers.Adam(self.encoder_learning_rate)
-        #   EXPLORATION NOISE
-        self.exploration_params = exploration
-        self.exploration_stddev = tf.Variable(exploration.stddev, dtype=tf.float32)
-        self.exploration_prob = exploration.prob
-        self.success_rate = None
-        self.n_simulations = n_simulations
-        ###
+                    to_model(pathway_conf.decoder_model_arch)
 
     def save_weights(self, path):
-        for pathway_name in self.models:
-            self.models[pathway_name]["policy_model"].save_weights(path + "/policy_model_{}".format(pathway_name))
-            self.models[pathway_name]["critic_model"].save_weights(path + "/critic_model_{}".format(pathway_name))
-            for scale_name in self.models[pathway_name]["encoder_models"]:
-                self.models[pathway_name]["encoder_models"][scale_name].save_weights(path + "/encoder_model_{}_{}".format(pathway_name, scale_name))
-                self.models[pathway_name]["decoder_models"][scale_name].save_weights(path + "/decoder_model_{}_{}".format(pathway_name, scale_name))
+        for pathway_name, pathway_models in self.models.items():
+            for models_name, models in pathway_models.items():
+                for model_name, model in models.items():
+                    model.save_weights(path + "/{}_{}_{}".format(pathway_name, models_name, model_name))
 
     def load_weights(self, path):
-        for pathway_name in self.models:
-            self.models[pathway_name]["policy_model"].load_weights(path + "/policy_model_{}".format(pathway_name))
-            self.models[pathway_name]["critic_model"].load_weights(path + "/critic_model_{}".format(pathway_name))
-            for scale_name in self.models[pathway_name]["encoder_models"]:
-                self.models[pathway_name]["encoder_models"][scale_name].load_weights(path + "/encoder_model_{}_{}".format(pathway_name, scale_name))
-                self.models[pathway_name]["decoder_models"][scale_name].load_weights(path + "/decoder_model_{}_{}".format(pathway_name, scale_name))
-
-    # @tf.function -- causes an error
-    def create_all_variables(self, fake_frame_by_scale_pavro, fake_frame_by_scale_magno):
-        # PAVRO
-        fake_encodings_by_scale_pavro = {
-            scale_name: self.models["pavro"]["encoder_models"][scale_name](frame)
-            for scale_name, frame in fake_frame_by_scale_pavro.items()
-        }
-        fake_decodings_by_scale_pavro = {
-            scale_name: self.models["pavro"]["decoder_models"][scale_name](frame)
-            for scale_name, frame in fake_encodings_by_scale_pavro.items()
-        }
-        fake_actions_pavro = self.models["pavro"]["policy_model"](fake_encodings_by_scale_pavro)
-        fake_return_estimate = self.models["pavro"]["critic_model"]((fake_encodings_by_scale_pavro, fake_actions_pavro))
-        # MAGNO
-        fake_encodings_by_scale_magno = {
-            scale_name: self.models["magno"]["encoder_models"][scale_name](frame)
-            for scale_name, frame in fake_frame_by_scale_magno.items()
-        }
-        fake_decodings_by_scale_magno = {
-            scale_name: self.models["magno"]["decoder_models"][scale_name](frame)
-            for scale_name, frame in fake_encodings_by_scale_magno.items()
-        }
-        fake_actions_magno = self.models["magno"]["policy_model"](fake_encodings_by_scale_magno)
-        fake_return_estimate = self.models["magno"]["critic_model"]((fake_encodings_by_scale_magno, fake_actions_magno))
-
-        targets = np.zeros(shape=(len(fake_actions_magno), 1), dtype=np.float32)
-
-        with tf.GradientTape() as tape:
-            total_loss = tf.reduce_sum(self.get_encoder_loss(fake_frame_by_scale_pavro, "pavro"))
-            variables = sum([model.variables for model in self.models["pavro"]["encoder_models"].values()] + \
-                   [model.variables for model in self.models["pavro"]["decoder_models"].values()], [])
-            grads = tape.gradient(total_loss, variables)
-            self.encoder_optimizer["pavro"].apply_gradients(zip(grads, variables))
-
-        with tf.GradientTape() as tape:
-            return_estimates = self.get_return_estimates(fake_frame_by_scale_pavro, fake_actions_pavro, "pavro")
-            loss_critic = keras.losses.Huber()(return_estimates, tf.stop_gradient(targets))
-            variables = self.models["pavro"]["critic_model"].variables
-            grads = tape.gradient(loss_critic, variables)
-            self.critic_optimizer["pavro"].apply_gradients(zip(grads, variables))
-
-        with tf.GradientTape() as tape:
-            actions = self.get_actions(fake_frame_by_scale_pavro, "pavro", exploration=False)
-            return_estimates = self.get_return_estimates(fake_frame_by_scale_pavro, actions, "pavro")
-            loss_policy = - tf.reduce_sum(return_estimates)
-            variables = self.models["pavro"]["policy_model"].variables
-            grads = tape.gradient(loss_policy, variables)
-            self.policy_optimizer["pavro"].apply_gradients(zip(grads, variables))
-
-        with tf.GradientTape() as tape:
-            total_loss = tf.reduce_sum(self.get_encoder_loss(fake_frame_by_scale_magno, "magno"))
-            variables = sum([model.variables for model in self.models["magno"]["encoder_models"].values()] + \
-                   [model.variables for model in self.models["magno"]["decoder_models"].values()], [])
-            grads = tape.gradient(total_loss, variables)
-            self.encoder_optimizer["magno"].apply_gradients(zip(grads, variables))
-
-        with tf.GradientTape() as tape:
-            return_estimates = self.get_return_estimates(fake_frame_by_scale_magno, fake_actions_magno, "magno")
-            loss_critic = keras.losses.Huber()(return_estimates, tf.stop_gradient(targets))
-            variables = self.models["magno"]["critic_model"].variables
-            grads = tape.gradient(loss_critic, variables)
-            self.critic_optimizer["magno"].apply_gradients(zip(grads, variables))
-
-        with tf.GradientTape() as tape:
-            actions = self.get_actions(fake_frame_by_scale_magno, "magno", exploration=False)
-            return_estimates = self.get_return_estimates(fake_frame_by_scale_magno, actions, "magno")
-            loss_policy = - tf.reduce_sum(return_estimates)
-            variables = self.models["magno"]["policy_model"].variables
-            grads = tape.gradient(loss_policy, variables)
-            self.policy_optimizer["magno"].apply_gradients(zip(grads, variables))
+        for pathway_name, pathway_models in self.models.items():
+            for models_name, models in pathway_models.items():
+                for model_name, model in models.items():
+                    model.load_weights(path + "/{}_{}_{}".format(pathway_name, models_name, model_name))
 
     @tf.function
     def get_encodings(self, frame_by_scale, pathway_name):
@@ -156,43 +77,26 @@ class Agent(object):
         }
 
     @tf.function
-    def get_reconstructions(self, frame_by_scale, pathway_name):
-        encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
+    def get_reconstructions(self, encodings_by_scale, pathway_name):
         return {
             scale_name: self.models[pathway_name]["decoder_models"][scale_name](encoding)
             for scale_name, encoding in encodings_by_scale.items()
         }
 
     @tf.function
-    def get_return_estimates(self, frame_by_scale, actions, pathway_name):
-        encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
-        return self.models[pathway_name]["critic_model"]((encodings_by_scale, actions))
+    def get_return_estimates(self, encodings_by_scale, pathway_name, joint_name):
+        return self.models[pathway_name]["critic_models"][joint_name](encodings_by_scale)
 
     @tf.function
-    def get_gradient(self, frame_by_scale, actions, pathway_name):
-        with tf.GradientTape() as tape:
-            tape.watch(actions)
-            return_estimates = self.get_return_estimates(frame_by_scale, actions, pathway_name)
-            gradient = tape.gradient(tf.reduce_sum(return_estimates), actions)
-        return gradient
-
-    @tf.function
-    def get_actions(self, frame_by_scale, pathway_name, exploration=False):
-        encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
-        pure_actions = self.models[pathway_name]["policy_model"](encodings_by_scale)
+    def get_actions_indices(self, return_estimates, exploration=False):
+        max_indices = tf.argmax(return_estimates, axis=-1, output_type=tf.int32)
         if exploration:
-            noises = tf.random.truncated_normal(
-                shape=tf.shape(pure_actions),
-                stddev=self.exploration_stddev,
-            ) * tf.cast(tf.random.uniform(shape=tf.shape(pure_actions)) < self.exploration_prob, tf.float32)
-            noisy_actions = tf.clip_by_value(
-                pure_actions + noises,
-                clip_value_min=-1,
-                clip_value_max=1
-            )
-            return pure_actions, noisy_actions
+            softmax = tf.nn.softmax(return_estimates / self.exploration_temperature, axis=-1)
+            softmax_indices = tfp.distributions.Categorical(probs=softmax).sample()
+            condition = tf.random.uniform(shape=tf.shape(max_indices)) > self.exploration_prob
+            return tf.where(condition, max_indices, softmax_indices)
         else:
-            return pure_actions
+            return max_indices
 
     @tf.function
     def get_encoder_loss_by_scale(self, frame_by_scale, pathway_name):
@@ -204,7 +108,8 @@ class Agent(object):
             pathway: list(pathway_conf.encoder_model_arch.config.layers[0].config.strides)
             for pathway, pathway_conf in self.pathways.items()
         }
-        reconstructions_by_scale = self.get_reconstructions(frame_by_scale, pathway_name)
+        encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
+        reconstructions_by_scale = self.get_reconstructions(encodings_by_scale, pathway_name)
         patches_by_scale = {
             scale_name: tf.image.extract_patches(
                 frame,
@@ -233,43 +138,193 @@ class Agent(object):
             variables = sum([model.variables for model in self.models[pathway_name]["encoder_models"].values()] + \
                    [model.variables for model in self.models[pathway_name]["decoder_models"].values()], [])
             grads = tape.gradient(total_loss, variables)
-            self.encoder_optimizer[pathway_name].apply_gradients(zip(grads, variables))
+            self.encoder_optimizer.apply_gradients(zip(grads, variables))
         return total_loss
 
     @tf.function
-    def train_critic(self, frame_by_scale, actions, targets, pathway_name):
+    def train_critic(self, frame_by_scale, actions_indices, targets, pathway_name, joint_name):
         with tf.GradientTape() as tape:
-            return_estimates = self.get_return_estimates(frame_by_scale, actions, pathway_name)
-            loss_critic = keras.losses.Huber()(return_estimates, tf.stop_gradient(targets))
-            variables = self.models[pathway_name]["critic_model"].variables
+            encodings_by_scale = self.get_encodings(frame_by_scale, pathway_name)
+            return_estimates = self.get_return_estimates(encodings_by_scale, pathway_name, joint_name)
+            # return_estimates # [BS, n_actions]
+            # targets          # [BS, ]
+            # actions_indices  # [BS, ]
+            loss_filter = tf.math.exp(-(tf.cast(
+                tf.reshape(actions_indices, (-1, 1)) -            # [BS, 1]
+                tf.range(self.n_actions[joint_name])[tf.newaxis], # [1, NA]
+                tf.float32)) ** 2 / self.actions_neighbourhood_size    # [BS, NA]
+            )
+            loss_critic = tf.reduce_sum((return_estimates - targets[:, tf.newaxis]) ** 2 * loss_filter)
+            variables = self.models[pathway_name]["critic_models"][joint_name].variables
             grads = tape.gradient(loss_critic, variables)
-            self.critic_optimizer[pathway_name].apply_gradients(zip(grads, variables))
+            self.critic_optimizer.apply_gradients(zip(grads, variables))
         return loss_critic
 
     @tf.function
-    def train_policy(self, frame_by_scale, pathway_name):
-        with tf.GradientTape() as tape_weights, tf.GradientTape() as tape_actions:
-            actions = self.get_actions(frame_by_scale, pathway_name, exploration=False)
-            return_estimates = self.get_return_estimates(frame_by_scale, actions, pathway_name)
-            loss_policy = - tf.reduce_sum(return_estimates)
-            variables = self.models[pathway_name]["policy_model"].variables
-            grads = tape_weights.gradient(loss_policy, variables)
-            action_grads = tape_actions.gradient(-loss_policy, actions)
-            self.policy_optimizer[pathway_name].apply_gradients(zip(grads, variables))
-        return loss_policy, action_grads
-
-    @tf.function
-    def train(self, frame_by_scale, actions, targets, pathway_name,
-            encoders=True, critic=True, policy=True):
+    def train(self,
+            pavro_frame_by_scale,
+            magno_frame_by_scale,
+            tilt_actions_indices,
+            pan_actions_indices,
+            vergence_actions_indices,
+            cyclo_actions_indices,
+            magno_targets,
+            pavro_targets,
+            encoders=True, critic=True):
         losses = {}
         if encoders:
-            encoders_loss = self.train_encoders(frame_by_scale, pathway_name)
-            losses["encoders"] = encoders_loss
+            losses["pavro_encoders"] = self.train_encoders(pavro_frame_by_scale, "pavro")
+            losses["magno_encoders"] = self.train_encoders(magno_frame_by_scale, "magno")
         if critic:
-            critic_loss = self.train_critic(frame_by_scale, actions, targets, pathway_name)
-            losses["critic"] = critic_loss
-        if policy:
-            policy_loss, action_grads = self.train_policy(frame_by_scale, pathway_name)
-            losses["policy"] = policy_loss
-            return losses, action_grads
-        return losses, None
+            losses["critic_tilt"] = self.train_critic(magno_frame_by_scale, tilt_actions_indices, magno_targets, "magno", "tilt")
+            losses["critic_pan"] = self.train_critic(magno_frame_by_scale, pan_actions_indices, magno_targets, "magno", "pan")
+            losses["critic_vergence"] = self.train_critic(pavro_frame_by_scale, vergence_actions_indices, pavro_targets, "pavro", "vergence")
+            losses["critic_cyclo"] = self.train_critic(pavro_frame_by_scale, cyclo_actions_indices, pavro_targets, "pavro", "cyclo")
+        return losses
+
+    @tf.function
+    def __call__(self, pavro_vision, magno_vision):
+        magno_encodings_by_scale = self.get_encodings(magno_vision, "magno")
+        pavro_encodings_by_scale = self.get_encodings(pavro_vision, "pavro")
+        tilt_return_estimates = self.get_return_estimates(magno_encodings_by_scale, "magno", "tilt")
+        pan_return_estimates = self.get_return_estimates(magno_encodings_by_scale, "magno", "pan")
+        vergence_return_estimates = self.get_return_estimates(pavro_encodings_by_scale, "pavro", "vergence")
+        cyclo_return_estimates = self.get_return_estimates(pavro_encodings_by_scale, "pavro", "cyclo")
+        return {
+            "pavro_recerr": self.get_encoder_loss(pavro_vision, "pavro"),
+            "magno_recerr": self.get_encoder_loss(magno_vision, "magno"),
+            "pavro_encodings_by_scale": pavro_encodings_by_scale,
+            "magno_encodings_by_scale": magno_encodings_by_scale,
+            "tilt_return_estimates": tilt_return_estimates,
+            "pan_return_estimates": pan_return_estimates,
+            "vergence_return_estimates": vergence_return_estimates,
+            "cyclo_return_estimates": cyclo_return_estimates,
+            "tilt_actions_indices": self.get_actions_indices(tilt_return_estimates, exploration=False),
+            "pan_actions_indices": self.get_actions_indices(pan_return_estimates, exploration=False),
+            "vergence_actions_indices": self.get_actions_indices(vergence_return_estimates, exploration=False),
+            "cyclo_actions_indices": self.get_actions_indices(cyclo_return_estimates, exploration=False),
+            "tilt_noisy_actions_indices": self.get_actions_indices(tilt_return_estimates, exploration=True),
+            "pan_noisy_actions_indices": self.get_actions_indices(pan_return_estimates, exploration=True),
+            "vergence_noisy_actions_indices": self.get_actions_indices(vergence_return_estimates, exploration=True),
+            "cyclo_noisy_actions_indices": self.get_actions_indices(cyclo_return_estimates, exploration=True),
+        }
+
+    def create_all_variables(self, fake_frame_by_scale_pavro, fake_frame_by_scale_magno):
+        pavro_encodings = {
+            scale_name: self.models["pavro"]["encoder_models"][scale_name](frame)
+            for scale_name, frame in fake_frame_by_scale_pavro.items()
+        }
+        pavro_decodings = {
+            scale_name: self.models["pavro"]["decoder_models"][scale_name](encoding)
+            for scale_name, encoding in pavro_encodings.items()
+        }
+        vergence_values = self.models["pavro"]["critic_models"]["vergence"](pavro_encodings)
+        cyclo_values = self.models["pavro"]["critic_models"]["cyclo"](pavro_encodings)
+
+        magno_encodings = {
+            scale_name: self.models["magno"]["encoder_models"][scale_name](frame)
+            for scale_name, frame in fake_frame_by_scale_magno.items()
+        }
+        magno_decodings = {
+            scale_name: self.models["magno"]["decoder_models"][scale_name](encoding)
+            for scale_name, encoding in magno_encodings.items()
+        }
+        tilt_values = self.models["magno"]["critic_models"]["tilt"](magno_encodings)
+        pan_values = self.models["magno"]["critic_models"]["pan"](magno_encodings)
+
+        batch_size = list(fake_frame_by_scale_pavro.values())[0].shape[0]
+        # PAVRO
+        # encoder
+        with tf.GradientTape() as tape:
+            total_loss = tf.reduce_sum(self.get_encoder_loss(fake_frame_by_scale_pavro, "pavro"))
+            variables = sum([model.variables for model in self.models["pavro"]["encoder_models"].values()] + \
+                   [model.variables for model in self.models["pavro"]["decoder_models"].values()], [])
+            grads = tape.gradient(total_loss, variables)
+            self.encoder_optimizer.apply_gradients(zip(grads, variables))
+
+        # critic
+        # vergence
+        actions_indices = tf.zeros(shape=(batch_size,), dtype=tf.int32)
+        targets = np.zeros(shape=(batch_size,), dtype=np.float32)
+        with tf.GradientTape() as tape:
+            encodings_by_scale = self.get_encodings(fake_frame_by_scale_pavro, "pavro")
+            return_estimates = self.get_return_estimates(encodings_by_scale, "pavro", "vergence")
+            # return_estimates # [BS, n_actions]
+            # targets          # [BS, ]
+            # actions_indices  # [BS, ]
+            loss_filter = tf.math.exp(-(tf.cast(
+                tf.reshape(actions_indices, (-1, 1)) -
+                tf.range(self.n_actions["vergence"])[tf.newaxis],
+                tf.float32)) ** 2 / self.actions_neighbourhood_size
+            )
+            loss_critic = tf.reduce_sum((return_estimates - targets[:, tf.newaxis]) ** 2 * loss_filter)
+            variables = self.models["pavro"]["critic_models"]["vergence"].variables
+            grads = tape.gradient(loss_critic, variables)
+            self.critic_optimizer.apply_gradients(zip(grads, variables))
+
+        # cyclo
+        actions_indices = tf.zeros(shape=(batch_size,), dtype=tf.int32)
+        targets = np.zeros(shape=(batch_size,), dtype=np.float32)
+        with tf.GradientTape() as tape:
+            encodings_by_scale = self.get_encodings(fake_frame_by_scale_pavro, "pavro")
+            return_estimates = self.get_return_estimates(encodings_by_scale, "pavro", "cyclo")
+            # return_estimates # [BS, n_actions]
+            # targets          # [BS, ]
+            # actions_indices  # [BS, ]
+            loss_filter = tf.math.exp(-(tf.cast(
+                tf.reshape(actions_indices, (-1, 1)) -
+                tf.range(self.n_actions["cyclo"])[tf.newaxis],
+                tf.float32)) ** 2 / self.actions_neighbourhood_size
+            )
+            loss_critic = tf.reduce_sum((return_estimates - targets[:, tf.newaxis]) ** 2 * loss_filter)
+            variables = self.models["pavro"]["critic_models"]["cyclo"].variables
+            grads = tape.gradient(loss_critic, variables)
+            self.critic_optimizer.apply_gradients(zip(grads, variables))
+
+        # MAGNO
+        # encoder
+        with tf.GradientTape() as tape:
+            total_loss = tf.reduce_sum(self.get_encoder_loss(fake_frame_by_scale_magno, "magno"))
+            variables = sum([model.variables for model in self.models["magno"]["encoder_models"].values()] + \
+                   [model.variables for model in self.models["magno"]["decoder_models"].values()], [])
+            grads = tape.gradient(total_loss, variables)
+            self.encoder_optimizer.apply_gradients(zip(grads, variables))
+
+        # critic
+        # tilt
+        actions_indices = tf.zeros(shape=(batch_size,), dtype=tf.int32)
+        targets = np.zeros(shape=(batch_size,), dtype=np.float32)
+        with tf.GradientTape() as tape:
+            encodings_by_scale = self.get_encodings(fake_frame_by_scale_magno, "magno")
+            return_estimates = self.get_return_estimates(encodings_by_scale, "magno", "tilt")
+            # return_estimates # [BS, n_actions]
+            # targets          # [BS, ]
+            # actions_indices  # [BS, ]
+            loss_filter = tf.math.exp(-(tf.cast(
+                tf.reshape(actions_indices, (-1, 1)) -
+                tf.range(self.n_actions["tilt"])[tf.newaxis],
+                tf.float32)) ** 2 / self.actions_neighbourhood_size
+            )
+            loss_critic = tf.reduce_sum((return_estimates - targets[:, tf.newaxis]) ** 2 * loss_filter)
+            variables = self.models["magno"]["critic_models"]["tilt"].variables
+            grads = tape.gradient(loss_critic, variables)
+            self.critic_optimizer.apply_gradients(zip(grads, variables))
+
+        # pan
+        actions_indices = tf.zeros(shape=(batch_size,), dtype=tf.int32)
+        targets = np.zeros(shape=(batch_size,), dtype=np.float32)
+        with tf.GradientTape() as tape:
+            encodings_by_scale = self.get_encodings(fake_frame_by_scale_magno, "magno")
+            return_estimates = self.get_return_estimates(encodings_by_scale, "magno", "pan")
+            # return_estimates # [BS, n_actions]
+            # targets          # [BS, ]
+            # actions_indices  # [BS, ]
+            loss_filter = tf.math.exp(-(tf.cast(
+                tf.reshape(actions_indices, (-1, 1)) -
+                tf.range(self.n_actions["pan"])[tf.newaxis],
+                tf.float32)) ** 2 / self.actions_neighbourhood_size
+            )
+            loss_critic = tf.reduce_sum((return_estimates - targets[:, tf.newaxis]) ** 2 * loss_filter)
+            variables = self.models["magno"]["critic_models"]["pan"].variables
+            grads = tape.gradient(loss_critic, variables)
+            self.critic_optimizer.apply_gradients(zip(grads, variables))
