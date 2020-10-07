@@ -1,5 +1,10 @@
 # @package _group_
 
-joints:
-  - tilt
-  - pan
+actions:
+  tilt:
+    - 0.
+  pan:
+    - 0.
+n_actions:
+  tilt: 1
+  pan: 1

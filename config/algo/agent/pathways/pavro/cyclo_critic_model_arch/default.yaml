@@ -7,8 +7,8 @@ config:
   layers:
   - class_name: PolicyPerScaleConv2D
     config:
-      activation: tanh
-      filters: 64
+      activation: relu
+      filters: 16
       kernel_size:
       - 2
       - 2
@@ -26,7 +26,7 @@ config:
       - 1
   - class_name: Dense
     config:
-      activation: tanh
+      activation: relu
       activity_regularizer: null
       bias_constraint: null
       bias_initializer:
@@ -40,9 +40,29 @@ config:
         config:
           seed: null
       kernel_regularizer: null
-      name: dense_2
+      name: dense
       trainable: true
-      units: 2
+      units: 400
       use_bias: true
-  name: sequential_4
+  - class_name: Dense
+    config:
+      activation: linear
+      activity_regularizer: null
+      bias_constraint: null
+      bias_initializer:
+        class_name: Zeros
+        config: {}
+      bias_regularizer: null
+      dtype: float32
+      kernel_constraint: null
+      kernel_initializer:
+        class_name: GlorotUniform
+        config:
+          seed: null
+      kernel_regularizer: null
+      name: dense_1
+      trainable: true
+      units: ${agent.pathways.pavro.n_actions.cyclo}
+      use_bias: true
+  name: sequential_3
 keras_version: 2.3.0-tf

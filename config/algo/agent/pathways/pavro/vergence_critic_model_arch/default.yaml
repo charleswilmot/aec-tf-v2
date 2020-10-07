@@ -5,7 +5,7 @@ backend: tensorflow
 class_name: Sequential
 config:
   layers:
-  - class_name: CriticPerScaleConv2D
+  - class_name: PolicyPerScaleConv2D
     config:
       activation: relu
       filters: 16
@@ -62,7 +62,7 @@ config:
       kernel_regularizer: null
       name: dense_1
       trainable: true
-      units: 1
+      units: ${agent.pathways.pavro.n_actions.vergence}
       use_bias: true
   name: sequential_3
 keras_version: 2.3.0-tf
