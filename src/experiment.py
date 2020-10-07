@@ -72,7 +72,7 @@ def experiment(cfg):
         if experiment_conf.final_recording:
             print("Generating final recording (without exploration)")
             procedure.record(
-                video_name='./replays/replay_final.mp4',
+                video_name='./replays/replay_final',
                 n_episodes=4,
                 exploration=False
             )

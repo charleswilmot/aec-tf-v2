@@ -439,7 +439,7 @@ class Procedure(object):
         self.apply_action(np.zeros((self.n_simulations, 4)))
         prev_pavro_recerr = np.zeros(self.n_simulations)
         prev_magno_recerr = np.zeros(self.n_simulations)
-        for iteration in range(self.episode_length):
+        for iteration in range(30):
             vision_before = vision_after
             vision_after = self.get_vision()
             left_rights = vision_after.pop("record")

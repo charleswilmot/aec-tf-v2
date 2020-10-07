@@ -87,6 +87,8 @@ def get_partition_reservation():
     print("no free space")
     print("No space available on the cluster. Defaulting to turbine/vane OPTION 1")
     return "sleuths", None
+    # print("No space available on the cluster. Defaulting to jetski/speedboat OPTION 2")
+    # return "sleuths", "triesch-shared"
 
 
 def get_job_name():
