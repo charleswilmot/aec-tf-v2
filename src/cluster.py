@@ -61,7 +61,7 @@ def get_n_free_gpus(node):
     return total - used
 
 
-def node_list_availability(node_list, min_cpus=14, min_free_mem=20000):
+def node_list_availability(node_list, min_cpus=8, min_free_mem=20000):
     for node in node_list:
         n_free_cpus = get_n_free_cpus(node)
         free_mem = get_free_mem(node)
@@ -74,13 +74,13 @@ def node_list_availability(node_list, min_cpus=14, min_free_mem=20000):
 
 def get_partition_reservation():
     # OPTION 1
-    print("checking OPTION 2 ... ", end="")
+    print("checking OPTION 1 ... ", end="")
     if node_list_availability(["turbine", "vane"]):
         print("free space available, sending job")
         return "sleuths", None
     print("no free space")
     # OPTION 2
-    print("checking OPTION 3 ... ", end="")
+    print("checking OPTION 2 ... ", end="")
     if node_list_availability(["jetski", "speedboat"]):
         print("free space available, sending job")
         return "sleuths", "triesch-shared"
