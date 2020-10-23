@@ -725,7 +725,7 @@ if __name__ == '__main__':
             )
             for j in range(10):
                 simulation.step_sim()
-            
+
 
     def open_env():
         simulation = SimulationProducer(gui=True)
@@ -738,4 +738,104 @@ if __name__ == '__main__':
         while True:
             simulation.step_sim()
 
-    test_6()
+    def demo():
+        wait = 30
+        speed = 0.1
+        n = 100
+        simulation = SimulationProducer(gui=True)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        t_start = time.time()
+        while time.time() < t_start + wait:
+            simulation.step_sim()
+
+        simulation.add_scale("only", (10, 10), 0.01)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=0,
+            direction=0,
+            texture_id=0,
+            preinit=False,
+        )
+
+        # vergence
+        for i in range(n):
+            simulation.apply_action([0.0, 0.0, -speed, 0.0])
+        for i in range(n):
+            simulation.apply_action([0.0, 0.0, speed, 0.0])
+        simulation.episode_reset_head(vergence=0, cyclo=0)
+
+        # tilt
+        simulation.apply_action([speed, 0.0, 0.0, 0.0])
+        for i in range(n):
+            # simulation.apply_action([0.0, 0.0, 0.0, 0.0])
+            simulation.step_sim()
+        simulation.apply_action([-2 * speed, 0.0, 0.0, 0.0])
+        for i in range(n):
+            # simulation.apply_action([0.0, 0.0, 0.0, 0.0])
+            simulation.step_sim()
+        simulation.episode_reset_head(vergence=0, cyclo=0)
+
+        # pan
+        simulation.apply_action([0.0, speed, 0.0, 0.0])
+        for i in range(n):
+            # simulation.apply_action([0.0, 0.0, 0.0, 0.0])
+            simulation.step_sim()
+        simulation.apply_action([0.0, -2 * speed, 0.0, 0.0])
+        for i in range(n):
+            # simulation.apply_action([0.0, 0.0, 0.0, 0.0])
+            simulation.step_sim()
+        simulation.episode_reset_head(vergence=0, cyclo=0)
+
+        t_start = time.time()
+        while time.time() < t_start + wait:
+            simulation.step_sim()
+
+
+    def test_accuracy():
+        import matplotlib.pyplot as plt
+
+        simulation = SimulationProducer(gui=True)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+
+        def test_vergence(speeds):
+            speeds = np.array(speeds)
+            positions = np.cumsum(speeds)
+            recorded_positions = []
+            recorded_speeds = []
+            simulation.episode_reset_head(vergence=0, cyclo=0)
+            for speed in speeds:
+                simulation.apply_action([0.0, 0.0, speed, 0.0])
+                recorded_positions.append(simulation.get_joints_positions()[2])
+                recorded_speeds.append(simulation.get_joints_velocities()[2])
+            simulation.episode_reset_head(vergence=0, cyclo=0)
+            return positions, speeds, recorded_positions, recorded_speeds
+
+        def display_results(positions, speeds, recorded_positions, recorded_speeds):
+            fig = plt.figure()
+            ax = fig.add_subplot(121)
+            ax.plot(positions, label="target")
+            ax.plot(recorded_positions, label="record")
+            ax.legend()
+            ax.set_title("position")
+            ax = fig.add_subplot(122)
+            ax.plot(speeds, label="target")
+            ax.plot(recorded_speeds, label="record")
+            ax.legend()
+            ax.set_title("speed")
+            plt.show()
+
+        results = test_vergence([1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1])
+        display_results(*results)
+        results = test_vergence(np.random.uniform(size=20, low=-2, high=2))
+        display_results(*results)
+
+
+    test_accuracy()

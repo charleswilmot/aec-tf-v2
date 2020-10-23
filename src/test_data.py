@@ -221,7 +221,7 @@ class TestDataContainer:
                 return True
         return False
 
-    def plot_recerr_wrt_error(self, path, ylim=[0, 0.2], save=True):
+    def plot_recerr_wrt_error(self, path, ylim=[0, 0.08], save=True):
         if self.missing_data("wrt_pan_error", "wrt_tilt_error", "wrt_vergence_error", "wrt_cyclo_pos"):
             return
         with plot.FigureManager(path + "/reconstruction_error.png", save=save) as fig:

@@ -18,12 +18,13 @@ def to_model(conf):
 
 class Agent(object):
     def __init__(self,
-            critic_learning_rate, encoder_learning_rate, actions_neighbourhood_size,
-            exploration, n_simulations, scales, pathways):
+            critic_learning_rate, encoder_learning_rate, hubber_delta,
+            actions_neighbourhood_size, exploration, n_simulations, scales, pathways):
         self.critic_learning_rate = critic_learning_rate
         self.encoder_learning_rate = encoder_learning_rate
         self.critic_optimizer = keras.optimizers.Adam(self.critic_learning_rate)
         self.encoder_optimizer = keras.optimizers.Adam(self.encoder_learning_rate)
+        self.hubber_delta = float(hubber_delta)
         self.pathways = pathways
         self.scales = scales
         self.exploration_prob = exploration.prob
@@ -51,7 +52,7 @@ class Agent(object):
                 self.models[pathway]["critic_models"][joint_name] = \
                     to_model(pathway_conf["{}_critic_model_arch".format(joint_name)])
             #   ENCODERS / DECODERS
-            for scale, scale_conf in scales.items():
+            for scale, scale_conf in scales.description.items():
                 self.models[pathway]["encoder_models"][scale] = \
                     to_model(pathway_conf.encoder_model_arch)
                 self.models[pathway]["decoder_models"][scale] = \
@@ -149,12 +150,16 @@ class Agent(object):
             # return_estimates # [BS, n_actions]
             # targets          # [BS, ]
             # actions_indices  # [BS, ]
-            loss_filter = tf.math.exp(-(tf.cast(
-                tf.reshape(actions_indices, (-1, 1)) -            # [BS, 1]
-                tf.range(self.n_actions[joint_name])[tf.newaxis], # [1, NA]
-                tf.float32)) ** 2 / self.actions_neighbourhood_size    # [BS, NA]
-            )
-            loss_critic = tf.reduce_sum((return_estimates - targets[:, tf.newaxis]) ** 2 * loss_filter)
+            # loss_filter = tf.math.exp(-(tf.cast(
+            #     tf.reshape(actions_indices, (-1, 1)) -            # [BS, 1]
+            #     tf.range(self.n_actions[joint_name])[tf.newaxis], # [1, NA]
+            #     tf.float32)) ** 2 / self.actions_neighbourhood_size    # [BS, NA]
+            # )
+            # loss_critic = tf.reduce_sum((return_estimates - targets[:, tf.newaxis]) ** 2 * loss_filter)
+            batch_size = tf.shape(actions_indices)[0]
+            indices = tf.stack([tf.range(batch_size), actions_indices], axis=-1)
+            return_estimates = tf.gather_nd(return_estimates, indices)
+            loss_critic = keras.losses.Huber(delta=self.hubber_delta)(return_estimates, targets)
             variables = self.models[pathway_name]["critic_models"][joint_name].variables
             grads = tape.gradient(loss_critic, variables)
             self.critic_optimizer.apply_gradients(zip(grads, variables))

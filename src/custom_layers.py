@@ -149,6 +149,10 @@ def downscale_500_tanh(x):
     return tf.tanh(x / 500)
 
 
+def lrelu(x):
+    alpha = 0.2
+    return tf.nn.relu(x) * (1 - alpha) + x * alpha
+
 
 custom_objects = {
     "DenseReconcat": DenseReconcat,
@@ -157,6 +161,7 @@ custom_objects = {
     "downscale_10_tanh": downscale_10_tanh,
     "downscale_100_tanh": downscale_100_tanh,
     "downscale_500_tanh": downscale_500_tanh,
+    "lrelu": lrelu,
 }
 
 

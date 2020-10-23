@@ -1,12 +1,18 @@
 # @package _group_
 
 
-n_scales: 2
+n_scales: 4
 
 description:
   fine:
     resolution: 32
     view_angle: 9
+  middle:
+    resolution: 32
+    view_angle: 18
   coarse:
     resolution: 32
     view_angle: 27
+  very_coarse:
+    resolution: 32
+    view_angle: 36

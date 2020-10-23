@@ -7,7 +7,7 @@ config:
   layers:
   - class_name: Conv2D
     config:
-      activation: relu
+      activation: lrelu
       activity_regularizer: null
       bias_constraint: null
       bias_initializer:
@@ -38,7 +38,7 @@ config:
       use_bias: true
   - class_name: Conv2D
     config:
-      activation: relu
+      activation: lrelu
       activity_regularizer: null
       bias_constraint: null
       bias_initializer:

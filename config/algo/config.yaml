@@ -1,5 +1,5 @@
 buffer:
-  size: 10000
+  size: 2000
 
 simulation:
   n: 20
@@ -12,7 +12,7 @@ experiment:
   encoders_every: 1
   evaluate_every: 10
   test_every: 500
-  test_at_start: True
+  test_at_start: False
   record_episode_every: 500
   save_every: 500
   final_recording: True

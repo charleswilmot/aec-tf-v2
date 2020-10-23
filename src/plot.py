@@ -48,7 +48,7 @@ def recerr_wrt_error(ax, errors, reconstruction_errors,
         ax.legend()
 
 
-def action_wrt_error(ax, errors, actions, yscale, title=None, xlabel=None, ylabel=None, nbins=25, range=(-1, 1)):
+def action_wrt_error(ax, errors, actions, yscale, title=None, xlabel=None, ylabel=None, nbins=17, range=(-1.125, 1.125)):
     histograms = []
     edges = []
     for err, acts in zip(errors, actions):

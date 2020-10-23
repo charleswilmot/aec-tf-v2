@@ -22,6 +22,7 @@ def experiment(cfg):
     simulation_conf = cfg.simulation
     procedure_conf = cfg.procedure
     experiment_conf = cfg.experiment
+    tf.config.threading.set_intra_op_parallelism_threads(8)
     with Procedure(agent_conf, buffer_conf, simulation_conf, procedure_conf) as procedure:
         n_episode_batch = experiment_conf.n_episodes // simulation_conf.n
         if experiment_conf.test_at_start:

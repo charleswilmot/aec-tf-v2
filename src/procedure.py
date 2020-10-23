@@ -99,7 +99,7 @@ class Procedure(object):
         #   OBJECTS
         self.agent = Agent(**agent_conf)
         self.buffer = Buffer(**buffer_conf)
-        self.scale_names = list(agent_conf.scales)
+        self.scale_names = list(agent_conf.scales.description)
         #   SIMULATION POOL
         guis = list(simulation_conf.guis)
         self.simulation_pool = SimulationPool(
@@ -108,7 +108,7 @@ class Procedure(object):
         )
         self.simulation_pool.add_background("ny_times_square")
         self.simulation_pool.add_head()
-        for scale, scale_conf in agent_conf.scales.items():
+        for scale, scale_conf in agent_conf.scales.description.items():
             self.simulation_pool.add_scale(scale, (scale_conf.resolution, scale_conf.resolution), scale_conf.view_angle)
         self.simulation_pool.add_uniform_motion_screen(
             textures_path=procedure_conf.screen.textures_path,
@@ -131,11 +131,11 @@ class Procedure(object):
         # training
         pavro_dtype = np.dtype([
             (scale, np.float32, (scale_conf.resolution, scale_conf.resolution, 6))
-            for scale, scale_conf in agent_conf.scales.items()
+            for scale, scale_conf in agent_conf.scales.description.items()
         ])
         magno_dtype = np.dtype([
             (scale, np.float32, (scale_conf.resolution, scale_conf.resolution, 12))
-            for scale, scale_conf in agent_conf.scales.items()
+            for scale, scale_conf in agent_conf.scales.description.items()
         ])
         n_pavro_joints = 2
         n_magno_joints = 2
@@ -251,6 +251,18 @@ class Procedure(object):
             "collection/exploration_final_pan_error", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["final_pan_error"] = Mean(
             "collection/evaluation_final_pan_error", dtype=tf.float32)
+        self.tb["collection"]["exploration"]["final_vergence_1px"] = Mean(
+            "collection/exploration_final_vergence_1px", dtype=tf.float32)
+        self.tb["collection"]["evaluation"]["final_vergence_1px"] = Mean(
+            "collection/evaluation_final_vergence_1px", dtype=tf.float32)
+        self.tb["collection"]["exploration"]["final_tilt_1px"] = Mean(
+            "collection/exploration_final_tilt_1px", dtype=tf.float32)
+        self.tb["collection"]["evaluation"]["final_tilt_1px"] = Mean(
+            "collection/evaluation_final_tilt_1px", dtype=tf.float32)
+        self.tb["collection"]["exploration"]["final_pan_1px"] = Mean(
+            "collection/exploration_final_pan_1px", dtype=tf.float32)
+        self.tb["collection"]["evaluation"]["final_pan_1px"] = Mean(
+            "collection/evaluation_final_pan_1px", dtype=tf.float32)
         self.tb["collection"]["exploration"]["critic_snr_tilt"] = Mean(
             "collection/exploration_critic_snr_tilt_db", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["critic_snr_tilt"] = Mean(
@@ -294,19 +306,22 @@ class Procedure(object):
             self.log_metrics(
                 "collection",
                 "evaluation",
-                self.n_evaluation_episodes
+                self.n_exploration_episodes
+                # self.n_evaluation_episodes
             )
         if critic:
             self.log_metrics(
                 "training",
                 "critic",
-                self.n_critic_training
+                self.n_exploration_episodes
+                # self.n_critic_training
             )
         if encoders:
             self.log_metrics(
                 "training",
                 "encoders",
-                self.n_encoder_training
+                self.n_exploration_episodes
+                # self.n_encoder_training
             )
 
     def _get_current_training_ratio(self):
@@ -658,6 +673,11 @@ class Procedure(object):
         time_stop = time.time()
         # LOG METRICS
         final_tilt_error, final_pan_error, final_vergence_error = self.get_joints_errors()
+        with self.summary_writer.as_default():
+            tf.summary.histogram("tilt", final_tilt_error, step=self.n_exploration_episodes)
+            tf.summary.histogram("pan", final_pan_error, step=self.n_exploration_episodes)
+            tf.summary.histogram("vergence", final_vergence_error, step=self.n_exploration_episodes)
+
         self.accumulate_log_data(
             tilt_return_estimates=self._evaluation_data_buffer[:, :-1]["tilt_return_estimates"],
             pan_return_estimates=self._evaluation_data_buffer[:, :-1]["pan_return_estimates"],
@@ -840,6 +860,9 @@ class Procedure(object):
         tb["final_vergence_error"](np.mean(np.abs(final_vergence_error)))
         tb["final_tilt_error"](np.mean(np.abs(final_tilt_error)))
         tb["final_pan_error"](np.mean(np.abs(final_pan_error)))
+        tb["final_tilt_1px"](np.sum(np.abs(final_tilt_error) < 90 / 320) * 100 / len(final_tilt_error))
+        tb["final_pan_1px"](np.sum(np.abs(final_pan_error) < 90 / 320) * 100 / len(final_pan_error))
+        tb["final_vergence_1px"](np.sum(np.abs(final_vergence_error) < 90 / 320) * 100 / len(final_vergence_error))
         #
         signal = magno_critic_targets
         noise = magno_critic_targets - tilt_return_estimates
@@ -863,39 +886,40 @@ class Procedure(object):
         #
 
     def train(self, critic=True, encoders=True):
-        data = self.buffer.sample(self.batch_size)
-        tb = self.tb["training"]
-        pavro_frame_by_scale = {
-            scale_name: data["pavro_vision"][scale_name]
-            for scale_name in self.scale_names
-        }
-        magno_frame_by_scale = {
-            scale_name: data["magno_vision"][scale_name]
-            for scale_name in self.scale_names
-        }
-        losses = self.agent.train(
-            pavro_frame_by_scale,
-            magno_frame_by_scale,
-            data["tilt_noisy_actions_indices"],
-            data["pan_noisy_actions_indices"],
-            data["vergence_noisy_actions_indices"],
-            data["cyclo_noisy_actions_indices"],
-            data["magno_critic_targets"],
-            data["pavro_critic_targets"],
-            encoders=encoders,
-            critic=critic)
-        if critic:
-            tb["critic"]["critic_tilt_loss"](losses["critic_tilt"])
-            tb["critic"]["critic_pan_loss"](losses["critic_pan"])
-            tb["critic"]["critic_vergence_loss"](losses["critic_vergence"])
-            tb["critic"]["critic_cyclo_loss"](losses["critic_cyclo"])
-            self.n_critic_training += 1
-        if encoders:
-            tb["encoders"]["pavro_loss"](losses["pavro_encoders"])
-            tb["encoders"]["magno_loss"](losses["magno_encoders"])
-            self.n_encoder_training += 1
         self.n_global_training += 1
-        return losses
+        if self.buffer.enough(self.batch_size):
+            data = self.buffer.sample(self.batch_size)
+            tb = self.tb["training"]
+            pavro_frame_by_scale = {
+                scale_name: data["pavro_vision"][scale_name]
+                for scale_name in self.scale_names
+            }
+            magno_frame_by_scale = {
+                scale_name: data["magno_vision"][scale_name]
+                for scale_name in self.scale_names
+            }
+            losses = self.agent.train(
+                pavro_frame_by_scale,
+                magno_frame_by_scale,
+                data["tilt_noisy_actions_indices"],
+                data["pan_noisy_actions_indices"],
+                data["vergence_noisy_actions_indices"],
+                data["cyclo_noisy_actions_indices"],
+                data["magno_critic_targets"],
+                data["pavro_critic_targets"],
+                encoders=encoders,
+                critic=critic)
+            if critic:
+                tb["critic"]["critic_tilt_loss"](losses["critic_tilt"])
+                tb["critic"]["critic_pan_loss"](losses["critic_pan"])
+                tb["critic"]["critic_vergence_loss"](losses["critic_vergence"])
+                tb["critic"]["critic_cyclo_loss"](losses["critic_cyclo"])
+                self.n_critic_training += 1
+            if encoders:
+                tb["encoders"]["pavro_loss"](losses["pavro_encoders"])
+                tb["encoders"]["magno_loss"](losses["magno_encoders"])
+                self.n_encoder_training += 1
+            return losses
 
     def collect_and_train(self, critic=True, encoders=True):
         self.collect_data()

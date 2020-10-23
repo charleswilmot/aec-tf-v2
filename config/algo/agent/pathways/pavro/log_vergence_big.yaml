@@ -1,0 +1,18 @@
+# @package _group_
+
+actions:
+  vergence:
+      - -2.25
+      - -1.125
+      - -0.5625
+      - -0.28125
+      - 0.
+      - 0.28125
+      - 0.5625
+      - 1.125
+      - 2.25
+  cyclo:
+    - 0.
+n_actions:
+  vergence: 9
+  cyclo: 1

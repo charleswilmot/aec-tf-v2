@@ -1,7 +1,17 @@
 # @package _group_
 
 episode_length: 10
-batch_size: 256
-updates_per_sample: 1
+batch_size: 64
+updates_per_sample: 5
 reward_scaling: 600
+
+# critic_learning_rate:
+#   - 000000: 1e-3
+#   - 010000: 1e-4
+#   - 020000: 5e-5
+# encoder_learning_rate:
+#   - 000000: 1e-3
+#   - 010000: 1e-4
+#   - 020000: 5e-5
+
 test_conf_path: ${hydra:runtime.cwd}/../config/test_conf/default_at_2m.pkl

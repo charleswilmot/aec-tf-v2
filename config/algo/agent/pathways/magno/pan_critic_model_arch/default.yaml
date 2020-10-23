@@ -7,12 +7,12 @@ config:
   layers:
   - class_name: PolicyPerScaleConv2D
     config:
-      activation: relu
+      activation: lrelu
       filters: 16
       kernel_size:
       - 2
       - 2
-      n_scales: 2
+      n_scales: ${agent.scales.n_scales}
       padding: valid
       pool_padding: valid
       pool_size:
@@ -26,7 +26,7 @@ config:
       - 1
   - class_name: Dense
     config:
-      activation: relu
+      activation: lrelu
       activity_regularizer: null
       bias_constraint: null
       bias_initializer:

@@ -16,6 +16,9 @@ class Buffer(object):
         with open(path, "wb") as f:
             pickle.dump(self.buffer, f)
 
+    def enough(self, n):
+        return n <= self.current_last
+
     def integrate(self, data):
         if self.dtype is None: # must create buffer and dtype
             self.dtype = data.dtype
