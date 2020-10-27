@@ -41,13 +41,14 @@ def add_text(frame, **lines):
 
 def text_frame(height, width, **lines):
     font_size = 10
+    SHIFT = 120
     image = Image.fromarray(np.zeros((height, width, 3), dtype=np.uint8))
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
     for line_name, (string1, string2) in lines.items():
         h = int(line_name[5:]) + 1
         draw.text((font_size // 4, h * (font_size + font_size // 2)), string1, (255, 255, 255), font=font)
-        draw.text((font_size // 4 + width // 2, h * (font_size + font_size // 2)), string2, (255, 255, 255), font=font)
+        draw.text((font_size // 4 + SHIFT, h * (font_size + font_size // 2)), string2, (255, 255, 255), font=font)
     return np.array(image)
 
 
@@ -442,85 +443,89 @@ class Procedure(object):
         actions[:, 3] = self.agent.cyclo_action_set[cyclo]
         return actions
 
-    def record(self, exploration=False, n_episodes=1, video_name='replay', resolution=(320, 240)):
+    def record(self, exploration=False, n_episodes=20, video_name='replay', resolution=(320, 240)):
         half_size = (resolution[1] // 2, resolution[0] // 2)
         black_frame = np.zeros(shape=(resolution[1], resolution[0] // 2, 3), dtype=np.uint8)
         video_names = [video_name + "_{:02d}.mp4".format(i) for i in range(self.n_simulations)]
         writers = [get_writer(name, fps=25) for name in video_names]
         self.simulation_pool.add_scale("record", resolution, 90.0)
-        self.episode_reset_uniform_motion_screen(preinit=True)
-        self.episode_reset_head()
-        vision_after = self.get_vision() # preinit frames
-        left_rights = vision_after.pop("record")
-        self.apply_action(np.zeros((self.n_simulations, 4)))
-        prev_pavro_recerr = np.zeros(self.n_simulations)
-        prev_magno_recerr = np.zeros(self.n_simulations)
-        for iteration in range(30):
-            vision_before = vision_after
-            vision_after = self.get_vision()
+        n_episodes_done = 0
+        while n_episodes_done < n_episodes:
+            n_episodes_done += self.n_simulations
+            self.episode_reset_uniform_motion_screen(preinit=True)
+            self.episode_reset_head()
+            vision_after = self.get_vision() # preinit frames
             left_rights = vision_after.pop("record")
-            pavro_vision = vision_after
-            magno_vision = self.merge_before_after(vision_before, vision_after)
-            tilt_error, pan_error, vergence_error = self.get_joints_errors()
-            tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
-            tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
-            data = self.agent(pavro_vision, magno_vision)
-            if exploration:
-                actions = self.actions_indices_to_actions(
-                    data["tilt_noisy_actions_indices"].numpy(),
-                    data["pan_noisy_actions_indices"].numpy(),
-                    data["vergence_noisy_actions_indices"].numpy(),
-                    data["cyclo_noisy_actions_indices"].numpy(),
-                )
-            else:
-                actions = self.actions_indices_to_actions(
-                    data["tilt_actions_indices"].numpy(),
-                    data["pan_actions_indices"].numpy(),
-                    data["vergence_actions_indices"].numpy(),
-                    data["cyclo_actions_indices"].numpy(),
-                )
-            self.apply_action(actions)
-            pavro_recerr = data["pavro_recerr"]
-            magno_recerr = data["magno_recerr"]
-            for i, (writer, left_right) in enumerate(zip(writers, left_rights)):
-                ana = anaglyph(left_right)
-                # top = ((left_right[::2, ::2, :3] + 1) * 127.5).astype(np.uint8)
-                # bottom = ((left_right[::2, ::2, 3:] + 1) * 127.5).astype(np.uint8)
-                # top_bottom = np.concatenate([top, bottom], axis=0)
-                text_0 = text_frame(height=resolution[1], width=resolution[1],
-                    line_0 =("episode", "{: 2d}".format(i + 1)),
-                    line_1 =("iteration", "{: 2d}/{: 2d}".format(iteration + 1, self.episode_length)),
-                    line_2 =("tilt error", "{:.2f}".format(tilt_error[i])),
-                    line_3 =("pan error", "{:.2f}".format(pan_error[i])),
-                    line_4 =("vergence error", "{:.2f}".format(vergence_error[i])),
-                    line_5 =("tilt position", "{:.2f}".format(tilt_pos[i])),
-                    line_6 =("pan position", "{:.2f}".format(pan_pos[i])),
-                    line_7 =("vergence position", "{:.2f}".format(vergence_pos[i])),
-                    line_8 =("cyclo position", "{:.2f}".format(cyclo_pos[i])),
-                    line_9 =("tilt speed", "{:.2f}".format(tilt_speed[i])),
-                    line_10=("pan speed", "{:.2f}".format(pan_speed[i])),
-                    line_11=("vergence speed", "{:.2f}".format(vergence_speed[i])),
-                    line_12=("cyclo speed", "{:.2f}".format(cyclo_speed[i])),
-                    line_13=("pavro recerr", "{:.2f} - {:.2f} = {:.2f}".format(
-                        prev_pavro_recerr[i] * self.reward_scaling,
-                        pavro_recerr[i] * self.reward_scaling,
-                        (prev_pavro_recerr[i] - pavro_recerr[i]) * self.reward_scaling)),
-                    line_14=("magno recerr", "{:.2f} - {:.2f} = {:.2f}".format(
-                        prev_magno_recerr[i] * self.reward_scaling,
-                        magno_recerr[i] * self.reward_scaling,
-                        (prev_magno_recerr[i] - magno_recerr[i]) * self.reward_scaling)),
-                )
-                text_1 = text_frame(height=resolution[1], width=resolution[1],
-                    line_0=("action tilt", "{:.2f}".format(actions[i, 0])),
-                    line_1=("action pan", "{:.2f}".format(actions[i, 1])),
-                    line_2=("action vergence", "{:.2f}".format(actions[i, 2])),
-                    line_3=("action cyclo", "{:.2f}".format(actions[i, 3])),
-                )
-                # frame = np.concatenate([text_0, text_1, ana, top_bottom], axis=1)
-                frame = np.concatenate([text_0, text_1, ana], axis=1)
-                writer.append_data(frame)
-            prev_pavro_recerr = pavro_recerr
-            prev_magno_recerr = magno_recerr
+            self.apply_action(np.zeros((self.n_simulations, 4)))
+            prev_pavro_recerr = np.zeros(self.n_simulations)
+            prev_magno_recerr = np.zeros(self.n_simulations)
+            for iteration in range(30):
+                vision_before = vision_after
+                vision_after = self.get_vision()
+                left_rights = vision_after.pop("record")
+                pavro_vision = vision_after
+                magno_vision = self.merge_before_after(vision_before, vision_after)
+                tilt_error, pan_error, vergence_error = self.get_joints_errors()
+                tilt_speed, pan_speed, vergence_speed, cyclo_speed = self.get_joints_velocities()
+                tilt_pos, pan_pos, vergence_pos, cyclo_pos = self.get_joints_positions()
+                data = self.agent(pavro_vision, magno_vision)
+                if exploration:
+                    actions = self.actions_indices_to_actions(
+                        data["tilt_noisy_actions_indices"].numpy(),
+                        data["pan_noisy_actions_indices"].numpy(),
+                        data["vergence_noisy_actions_indices"].numpy(),
+                        data["cyclo_noisy_actions_indices"].numpy(),
+                    )
+                else:
+                    actions = self.actions_indices_to_actions(
+                        data["tilt_actions_indices"].numpy(),
+                        data["pan_actions_indices"].numpy(),
+                        data["vergence_actions_indices"].numpy(),
+                        data["cyclo_actions_indices"].numpy(),
+                    )
+                self.apply_action(actions)
+                pavro_recerr = data["pavro_recerr"]
+                magno_recerr = data["magno_recerr"]
+                for i, (writer, left_right) in enumerate(zip(writers, left_rights)):
+                    ana = anaglyph(left_right)
+                    text_0 = text_frame(height=resolution[1], width=resolution[1],
+                        line_0 =("episode", "{: 2d}".format(i * ((n_episodes + self.n_simulations - 1) // self.n_simulations) + n_episodes_done // self.n_simulations)),
+                        line_1 =("iteration", "{: 2d}/{: 2d}".format(iteration + 1, 30)),
+                        line_2 =("tilt error", "{:.2f}".format(tilt_error[i])),
+                        line_3 =("pan error", "{:.2f}".format(pan_error[i])),
+                        line_4 =("vergence error", "{:.2f}".format(vergence_error[i])),
+                        line_5 =("tilt position", "{:.2f}".format(tilt_pos[i])),
+                        line_6 =("pan position", "{:.2f}".format(pan_pos[i])),
+                        line_7 =("vergence position", "{:.2f}".format(vergence_pos[i])),
+                        line_8 =("cyclo position", "{:.2f}".format(cyclo_pos[i])),
+                        line_9 =("tilt speed", "{:.2f}".format(tilt_speed[i])),
+                        line_10=("pan speed", "{:.2f}".format(pan_speed[i])),
+                        line_11=("vergence speed", "{:.2f}".format(vergence_speed[i])),
+                        line_12=("cyclo speed", "{:.2f}".format(cyclo_speed[i])),
+                        line_13=("pavro recerr", "{:.2f} - {:.2f} = {:.2f}".format(
+                            prev_pavro_recerr[i] * self.reward_scaling,
+                            pavro_recerr[i] * self.reward_scaling,
+                            (prev_pavro_recerr[i] - pavro_recerr[i]) * self.reward_scaling)),
+                        line_14=("magno recerr", "{:.2f} - {:.2f} = {:.2f}".format(
+                            prev_magno_recerr[i] * self.reward_scaling,
+                            magno_recerr[i] * self.reward_scaling,
+                            (prev_magno_recerr[i] - magno_recerr[i]) * self.reward_scaling)),
+                    )
+                    text_1 = text_frame(height=resolution[1], width=((resolution[1] * 3 // 32) + 1) * 16,
+                        line_0=("action tilt", "{:.2f}".format(actions[i, 0])),
+                        line_1=("action pan", "{:.2f}".format(actions[i, 1])),
+                        line_2=("action vergence", "{:.2f}".format(actions[i, 2])),
+                        line_3=("action cyclo", "{:.2f}".format(actions[i, 3])),
+                        line_4=("vergence values", ("{: .2f} " * len(data["vergence_return_estimates"][i])).format(*data["vergence_return_estimates"][i])),
+                        line_5=("cyclo values", ("{: .2f} " * len(data["cyclo_return_estimates"][i])).format(*data["cyclo_return_estimates"][i])),
+                        line_6=("tilt values", ("{: .2f} " * len(data["tilt_return_estimates"][i])).format(*data["tilt_return_estimates"][i])),
+                        line_7=("pan values", ("{: .2f} " * len(data["pan_return_estimates"][i])).format(*data["pan_return_estimates"][i])),
+                    )
+                    # frame = np.concatenate([text_0, text_1, ana, top_bottom], axis=1)
+                    frame = np.concatenate([text_0, text_1, ana], axis=1)
+                    writer.append_data(frame)
+                prev_pavro_recerr = pavro_recerr
+                prev_magno_recerr = magno_recerr
         self.simulation_pool.delete_scale("record")
         for writer in writers:
             writer.close()

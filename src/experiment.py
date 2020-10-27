@@ -46,12 +46,12 @@ def experiment(cfg):
             if record:
                 procedure.record(
                     video_name='./replays/replay_{:05d}'.format(episode_batch + 1),
-                    n_episodes=1,
+                    n_episodes=20,
                     exploration=False
                 )
                 procedure.record(
                     video_name='./replays/replay_exploration_{:05d}'.format(episode_batch + 1),
-                    n_episodes=1,
+                    n_episodes=20,
                     exploration=True
                 )
             if test:
@@ -74,7 +74,7 @@ def experiment(cfg):
             print("Generating final recording (without exploration)")
             procedure.record(
                 video_name='./replays/replay_final',
-                n_episodes=4,
+                n_episodes=20,
                 exploration=False
             )
         print("Experiment finished, hope it worked. Good bye!")
