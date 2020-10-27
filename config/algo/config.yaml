@@ -11,25 +11,26 @@ experiment:
   critic_every: 1
   encoders_every: 1
   evaluate_every: 10
-  test_every: 500
+  test_every: 250
   test_at_start: False
-  record_episode_every: 500
-  save_every: 500
+  record_episode_every: 250
+  save_every: 250
   final_recording: True
+  repetition: 0
 
 
 defaults:
   - procedure: default
-  - procedure/screen: vergence
+  - procedure/screen: default
   - agent: default
   - agent/exploration: default
   - agent/scales: default
-  - agent/pathways/pavro: default
+  - agent/pathways/pavro: log_vergence
   - agent/pathways/pavro/vergence_critic_model_arch: default
   - agent/pathways/pavro/cyclo_critic_model_arch: default
   - agent/pathways/pavro/encoder_model_arch: default
   - agent/pathways/pavro/decoder_model_arch: default
-  - agent/pathways/magno: default
+  - agent/pathways/magno: log_pan_tilt
   - agent/pathways/magno/tilt_critic_model_arch: default
   - agent/pathways/magno/pan_critic_model_arch: default
   - agent/pathways/magno/encoder_model_arch: default

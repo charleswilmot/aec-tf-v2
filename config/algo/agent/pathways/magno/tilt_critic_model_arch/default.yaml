@@ -8,7 +8,7 @@ config:
   - class_name: PolicyPerScaleConv2D
     config:
       activation: lrelu
-      filters: 16
+      filters: 64
       kernel_size:
       - 2
       - 2
