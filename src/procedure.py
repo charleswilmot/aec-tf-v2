@@ -374,11 +374,8 @@ class Procedure(object):
             )
 
     def get_vision(self, color_scaling=None):
-        if color_scaling is None:
-            vision_list = self.simulation_pool.get_vision()
-        else:
-            with self.simulation_pool.distribute_args():
-                vision_list = self.simulation_pool.get_vision(color_scaling=color_scaling)
+        with self.simulation_pool.distribute_args():
+            vision_list = self.simulation_pool.get_vision(color_scaling=self.color_scaling if color_scaling is None else color_scaling)
         return {
             scale_name: np.stack([v[scale_name] for v in vision_list], axis=0)
             for scale_name in vision_list[0]
@@ -449,19 +446,20 @@ class Procedure(object):
         video_names = [video_name + "_{:02d}.mp4".format(i) for i in range(self.n_simulations)]
         writers = [get_writer(name, fps=25) for name in video_names]
         self.simulation_pool.add_scale("record", resolution, 90.0)
+        color_scaling = self.get_color_scaling()
         n_episodes_done = 0
         while n_episodes_done < n_episodes:
             n_episodes_done += self.n_simulations
             self.episode_reset_uniform_motion_screen(preinit=True)
             self.episode_reset_head()
-            vision_after = self.get_vision() # preinit frames
+            vision_after = self.get_vision(color_scaling=color_scaling) # preinit frames
             left_rights = vision_after.pop("record")
             self.apply_action(np.zeros((self.n_simulations, 4)))
             prev_pavro_recerr = np.zeros(self.n_simulations)
             prev_magno_recerr = np.zeros(self.n_simulations)
             for iteration in range(30):
                 vision_before = vision_after
-                vision_after = self.get_vision()
+                vision_after = self.get_vision(color_scaling=color_scaling)
                 left_rights = vision_after.pop("record")
                 pavro_vision = vision_after
                 magno_vision = self.merge_before_after(vision_before, vision_after)
@@ -732,11 +730,11 @@ class Procedure(object):
                         vergence=distance_to_vergence(conf["object_distance"]) - conf["vergence_error"],
                         cyclo=conf["cyclo_pos"],
                     )
-                    vision_after = self.get_vision(color_scaling=self.color_scaling)
+                    vision_after = self.get_vision()
                     self.simulation_pool.step_sim()
                     for iteration in range(length):
                         vision_before = vision_after
-                        vision_after = self.get_vision(color_scaling=self.color_scaling)
+                        vision_after = self.get_vision()
                         pavro_vision = vision_after
                         magno_vision = self.merge_before_after(vision_before, vision_after)
                         data = self.agent(pavro_vision, magno_vision)
@@ -823,9 +821,9 @@ class Procedure(object):
     #                 vergence=[distance_to_vergence(distance) - vergence_error] * n_processed_now,
     #                 cyclo=[cyclo_error] * n_processed_now,
     #             )
-    #             vision_before = self.get_vision(color_scaling=self.color_scaling)
+    #             vision_before = self.get_vision()
     #             self.simulation_pool.step_sim()
-    #             vision_after = self.get_vision(color_scaling=self.color_scaling)
+    #             vision_after = self.get_vision()
     #             pavro_vision = vision_after
     #             magno_vision = self.merge_before_after(vision_before, vision_after)
     #

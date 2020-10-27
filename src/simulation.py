@@ -324,6 +324,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
                 for scale_id, (left, right) in self.scales.items()
             }
 
+    @communicate_return_value
     def add_scale(self, id, resolution, view_angle):
         if id in self.scales:
             raise ValueError("Scale with id {} is already present".format(id))
@@ -334,6 +335,11 @@ class SimulationConsumer(SimulationConsumerAbstract):
             left = self.add_camera('left', resolution, view_angle)
             right = self.add_camera('right', resolution, view_angle)
             self.scales[id] = (left, right)
+            return id
+
+    @communicate_return_value
+    def get_scales(self):
+        return list(self.scales.keys())
 
     def delete_scale(self, id):
         if id in self.scales:
