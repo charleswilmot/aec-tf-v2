@@ -373,12 +373,9 @@ class Procedure(object):
                 [None] * self.simulation_pool.n if cyclo is None else cyclo,
             )
 
-    def get_vision(self, color_scaling=None):
-        if color_scaling is None:
-            vision_list = self.simulation_pool.get_vision()
-        else:
-            with self.simulation_pool.distribute_args():
-                vision_list = self.simulation_pool.get_vision(color_scaling=color_scaling)
+    def get_vision(self):
+        with self.simulation_pool.distribute_args():
+            vision_list = self.simulation_pool.get_vision(color_scaling=self.color_scaling)
         return {
             scale_name: np.stack([v[scale_name] for v in vision_list], axis=0)
             for scale_name in vision_list[0]
@@ -732,11 +729,11 @@ class Procedure(object):
                         vergence=distance_to_vergence(conf["object_distance"]) - conf["vergence_error"],
                         cyclo=conf["cyclo_pos"],
                     )
-                    vision_after = self.get_vision(color_scaling=self.color_scaling)
+                    vision_after = self.get_vision()
                     self.simulation_pool.step_sim()
                     for iteration in range(length):
                         vision_before = vision_after
-                        vision_after = self.get_vision(color_scaling=self.color_scaling)
+                        vision_after = self.get_vision()
                         pavro_vision = vision_after
                         magno_vision = self.merge_before_after(vision_before, vision_after)
                         data = self.agent(pavro_vision, magno_vision)
@@ -823,9 +820,9 @@ class Procedure(object):
     #                 vergence=[distance_to_vergence(distance) - vergence_error] * n_processed_now,
     #                 cyclo=[cyclo_error] * n_processed_now,
     #             )
-    #             vision_before = self.get_vision(color_scaling=self.color_scaling)
+    #             vision_before = self.get_vision()
     #             self.simulation_pool.step_sim()
-    #             vision_after = self.get_vision(color_scaling=self.color_scaling)
+    #             vision_after = self.get_vision()
     #             pavro_vision = vision_after
     #             magno_vision = self.merge_before_after(vision_before, vision_after)
     #
