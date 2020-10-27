@@ -91,10 +91,19 @@ def data_wrt_episode_mean_std(ax, data, std=True, ylim=[-5, 5], title=None, xlab
         ax.set_yticks([])
 
 
-def data_wrt_episode(ax, data, ylim=None, title=None, xlabel=None, ylabel=None):
+def data_wrt_episode_std_quantile(ax, data, ylim=None, title=None, xlabel=None, ylabel=None):
     x = np.arange(data.shape[-1])
-    for y in data:
-        ax.plot(x, y, color='k', alpha=0.05)
+    mean = np.mean(data, axis=0)
+    std = np.std(data, axis=0)
+    q10 = np.quantile(data, 0.10, axis=0)
+    q25 = np.quantile(data, 0.25, axis=0)
+    q75 = np.quantile(data, 0.75, axis=0)
+    q90 = np.quantile(data, 0.90, axis=0)
+    ax.fill_between(x, q10, q90, color='b', alpha=0.25)
+    ax.fill_between(x, q25, q75, color='b', alpha=0.25)
+    ax.fill_between(x, mean - std, mean + std, color='r', alpha=0.25)
+    # for y in data:
+    #     ax.plot(x, y, color='k', alpha=0.01)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
