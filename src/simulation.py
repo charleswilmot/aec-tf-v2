@@ -257,6 +257,12 @@ class SimulationConsumer(SimulationConsumerAbstract):
             self.uniform_motion_screen.episode_reset(start_distance,
                 depth_speed, angular_speed, direction, texture_id, preinit)
 
+    @communicate_return_value
+    def get_screen_position(self):
+        if self.uniform_motion_screen is None:
+            raise ValueError("Can not get screen position: no screen")
+        return self.uniform_motion_screen.position
+
     def episode_reset_head(self, vergence=None, cyclo=None):
         if self.head is None:
             raise ValueError("No head in the simulation")
@@ -373,9 +379,9 @@ class SimulationConsumer(SimulationConsumerAbstract):
         self.head.set_motor_locked_at_zero_velocity(bool)
 
     def step_sim(self):
-        self._pyrep.step()
         if self.uniform_motion_screen is not None:
             self.uniform_motion_screen.move()
+        self._pyrep.step()
 
     def start_sim(self):
         self._pyrep.start()
@@ -837,5 +843,58 @@ if __name__ == '__main__':
         results = test_vergence(np.random.uniform(size=20, low=-2, high=2))
         display_results(*results)
 
+    def test_7():
+        import matplotlib.pyplot as plt
+        # plt.ion()
+        fig = plt.figure()
+        ax00 = fig.add_subplot(221)
+        ax10 = fig.add_subplot(222)
+        ax01 = fig.add_subplot(223)
+        ax11 = fig.add_subplot(224)
+        simulation = SimulationProducer(gui=True)
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        simulation.add_scale("only", (320, 320), 9.0)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=1.125,
+            direction=0,
+            texture_id=0,
+            preinit=True,
+        )
+        simulation.episode_reset_head(vergence=distance_to_vergence(2), cyclo=0)
+        # simulation.step_sim()
+        print(simulation.get_screen_position())
+        # simulation.step_sim()
+        vision_0 = simulation.get_vision()
+        print(simulation.get_screen_position())
+        simulation.step_sim()
+        vision_1 = simulation.get_vision()
+        print(simulation.get_screen_position())
+        simulation.step_sim()
+        vision_2 = simulation.get_vision()
+        print(simulation.get_screen_position())
+        simulation.step_sim()
+        vision_3 = simulation.get_vision()
+        print(simulation.get_screen_position())
+        im00 = ax00.imshow((0.5 + 0.5 * vision_0["only"][..., :3]))
+        im10 = ax10.imshow((0.5 + 0.5 * vision_1["only"][..., :3]))
+        im01 = ax01.imshow((0.5 + 0.5 * vision_2["only"][..., :3]))
+        im11 = ax11.imshow((0.5 + 0.5 * vision_3["only"][..., :3]))
+        plt.show()
+        # for i in range(50):
+        #     simulation.episode_reset_uniform_motion_screen(
+        #         start_distance=2,
+        #         depth_speed=0,
+        #         angular_speed=1.125,
+        #         direction=0,
+        #         texture_id=0,
+        #         preinit=True,
+        #     )
+        #     for j in range(10):
+        #         simulation.step_sim()
 
-    test_accuracy()
+    test_7()
