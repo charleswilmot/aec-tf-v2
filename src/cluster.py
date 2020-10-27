@@ -1,4 +1,4 @@
-import omegaconf
+from omegaconf import OmegaConf
 import hydra
 import os
 from hydra.utils import get_original_cwd
@@ -21,7 +21,7 @@ def start_job(cfg):
         experiment_path = os.getcwd()
         pickle_conf_path = experiment_path + '/cfg.json'
         with open(pickle_conf_path, "w") as f:
-            json.dump(omegaconf.OmegaConf.to_container(cfg, resolve=True), f, indent=4)
+            json.dump(OmegaConf.to_container(cfg, resolve=True), f, indent=4)
         command_line_args  = " rundir=" + experiment_path
         job_name = get_job_name()
         output_flag = "--output {outdir}/%N_%j.joblog".format(outdir=experiment_path)
@@ -57,7 +57,7 @@ def get_n_free_gpus(node):
     total = os.popen("sinfo -h -p sleuths -n {} -O gres".format(node)).read()
     total = int(total.split(":")[-1])
     used = os.popen("squeue -h -w {} -O gres".format(node)).read()
-    used = sum([int(x.strip()[-1]) for x in used.strip().split()])
+    used = sum([int(x.strip()[-1]) for x in used.strip().split() if x != "(null)"])
     return total - used
 
 
