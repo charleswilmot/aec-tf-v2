@@ -18,10 +18,10 @@ def to_model(conf):
 
 class Agent(object):
     def __init__(self,
-            critic_learning_rate, encoder_learning_rate, hubber_delta,
-            actions_neighbourhood_size, exploration, n_simulations, scales, pathways):
-        self.critic_learning_rate = critic_learning_rate
-        self.encoder_learning_rate = encoder_learning_rate
+            hubber_delta, actions_neighbourhood_size, exploration,
+            n_simulations, scales, pathways):
+        self.critic_learning_rate = tf.Variable(1e-3, dtype=tf.float32)
+        self.encoder_learning_rate = tf.Variable(1e-3, dtype=tf.float32)
         self.critic_optimizer = keras.optimizers.Adam(self.critic_learning_rate)
         self.encoder_optimizer = keras.optimizers.Adam(self.encoder_learning_rate)
         self.hubber_delta = float(hubber_delta)
@@ -57,6 +57,16 @@ class Agent(object):
                     to_model(pathway_conf.encoder_model_arch)
                 self.models[pathway]["decoder_models"][scale] = \
                     to_model(pathway_conf.decoder_model_arch)
+
+    def set_critic_learning_rate(self, lr):
+        if self.critic_learning_rate != lr:
+            print("New critic learning rate : {}".format(lr))
+            self.critic_learning_rate.assign(lr)
+
+    def set_encoder_learning_rate(self, lr):
+        if self.encoder_learning_rate != lr:
+            print("New encoder learning rate : {}".format(lr))
+            self.encoder_learning_rate.assign(lr)
 
     def save_weights(self, path):
         for pathway_name, pathway_models in self.models.items():

@@ -77,6 +77,7 @@ def anaglyph(left_right):
 class Procedure(object):
     def __init__(self, agent_conf, buffer_conf, simulation_conf, procedure_conf):
         #   PROCEDURE CONF
+        self.procedure_conf = procedure_conf
         self.episode_length = procedure_conf.episode_length
         self.updates_per_sample = procedure_conf.updates_per_sample
         self.batch_size = procedure_conf.batch_size
@@ -87,8 +88,6 @@ class Procedure(object):
         self.test_conf = TestDataContainer.load(procedure_conf.test_conf_path)
         #    HPARAMS
         self._hparams = OrderedDict([
-            ("critic_LR", agent_conf.critic_learning_rate),
-            ("encoder_LR", agent_conf.encoder_learning_rate),
             ("buffer", buffer_conf.size),
             ("update_rate", procedure_conf.updates_per_sample),
             ("ep_length", procedure_conf.episode_length),
@@ -97,9 +96,11 @@ class Procedure(object):
             ("expl_temp", agent_conf.exploration.temperature),
         ])
         #   OBJECTS
-        self.agent = Agent(**agent_conf)
         self.buffer = Buffer(**buffer_conf)
         self.scale_names = list(agent_conf.scales.description)
+        self.agent = Agent(**agent_conf)
+        self.agent.set_critic_learning_rate(procedure_conf.critic_learning_rate[0].lr)
+        self.agent.set_encoder_learning_rate(procedure_conf.critic_learning_rate[0].lr)
         #   SIMULATION POOL
         guis = list(simulation_conf.guis)
         self.simulation_pool = SimulationPool(
@@ -887,6 +888,20 @@ class Procedure(object):
 
     def train(self, critic=True, encoders=True):
         self.n_global_training += 1
+
+        prev = 1e-3
+        for x in self.procedure_conf.critic_learning_rate:
+            if x.iteration > self.n_exploration_episodes:
+                self.agent.set_critic_learning_rate(prev)
+                break
+            prev = x.lr
+        prev = 1e-3
+        for x in self.procedure_conf.encoder_learning_rate:
+            if x.iteration > self.n_exploration_episodes:
+                self.agent.set_encoder_learning_rate(prev)
+                break
+            prev = x.lr
+
         if self.buffer.enough(self.batch_size):
             data = self.buffer.sample(self.batch_size)
             tb = self.tb["training"]
