@@ -2,5 +2,6 @@
 
 
 hubber_delta: 0.5
+adam_epsilon: 1e-7
 actions_neighbourhood_size: 1.5
 n_simulations: ${simulation.n}

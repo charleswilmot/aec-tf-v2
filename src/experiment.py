@@ -25,6 +25,8 @@ def experiment(cfg):
     tf.config.threading.set_intra_op_parallelism_threads(8)
     with Procedure(agent_conf, buffer_conf, simulation_conf, procedure_conf) as procedure:
         n_episode_batch = experiment_conf.n_episodes // simulation_conf.n
+        if experiment_conf.restore_encoder is not None:
+            procedure.restore(experiment_conf.restore_encoder, encoder=True, critic=False)
         if experiment_conf.test_at_start:
             procedure.test()
         for episode_batch in range(n_episode_batch):

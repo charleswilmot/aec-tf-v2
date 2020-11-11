@@ -17,6 +17,7 @@ experiment:
   save_every: 250
   final_recording: True
   repetition: 0
+  restore_encoder: None
 
 
 defaults:
@@ -49,4 +50,4 @@ hydra:
       override_dirname:
         kv_sep: '.'
         item_sep: '__'
-        exclude_keys: []
+        exclude_keys: [experiment.restore_encoder]

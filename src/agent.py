@@ -18,12 +18,12 @@ def to_model(conf):
 
 class Agent(object):
     def __init__(self,
-            hubber_delta, actions_neighbourhood_size, exploration,
+            hubber_delta, adam_epsilon, actions_neighbourhood_size, exploration,
             n_simulations, scales, pathways):
         self.critic_learning_rate = tf.Variable(1e-3, dtype=tf.float32)
         self.encoder_learning_rate = tf.Variable(1e-3, dtype=tf.float32)
-        self.critic_optimizer = keras.optimizers.Adam(self.critic_learning_rate)
-        self.encoder_optimizer = keras.optimizers.Adam(self.encoder_learning_rate)
+        self.critic_optimizer = keras.optimizers.Adam(self.critic_learning_rate, epsilon=adam_epsilon)
+        self.encoder_optimizer = keras.optimizers.Adam(self.encoder_learning_rate, epsilon=adam_epsilon)
         self.hubber_delta = float(hubber_delta)
         self.pathways = pathways
         self.scales = scales
@@ -74,11 +74,12 @@ class Agent(object):
                 for model_name, model in models.items():
                     model.save_weights(path + "/{}_{}_{}".format(pathway_name, models_name, model_name))
 
-    def load_weights(self, path):
+    def load_weights(self, path, encoder=True, critic=True):
         for pathway_name, pathway_models in self.models.items():
             for models_name, models in pathway_models.items():
-                for model_name, model in models.items():
-                    model.load_weights(path + "/{}_{}_{}".format(pathway_name, models_name, model_name))
+                if (encoder and models_name in ["encoder_models", "decoder_models"]) or (critic and models_name in ["critic_models"]):
+                    for model_name, model in models.items():
+                        model.load_weights(path + "/{}_{}_{}".format(pathway_name, models_name, model_name))
 
     @tf.function
     def get_encodings(self, frame_by_scale, pathway_name):

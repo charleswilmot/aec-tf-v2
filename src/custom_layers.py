@@ -1,6 +1,8 @@
 import tensorflow as tf
 import tensorflow.keras as keras
 from tensorflow.python.keras import activations
+from tensorflow.python.keras.utils import generic_utils
+import copy
 
 
 class DenseReconcat(keras.layers.Dense):
@@ -20,8 +22,8 @@ class DenseReconcat(keras.layers.Dense):
 
 class CriticPerScaleConv2D(keras.layers.Layer):
     def __init__(self, n_scales, filters, kernel_size, strides, padding='valid', activation=None,
-            pool_size=(2, 2), pool_strides=(1, 1), pool_padding='valid'):
-        super().__init__()
+            pool_size=(2, 2), pool_strides=(1, 1), pool_padding='valid', **kwargs):
+        super().__init__(**kwargs)
         # store parameters: #
         self._n_scales = n_scales
         self._filters = filters
@@ -75,6 +77,7 @@ class CriticPerScaleConv2D(keras.layers.Layer):
             "pool_size": self._pool_size,
             "pool_strides": self._pool_strides,
             "pool_padding": self._pool_padding,
+            "name": self.name,
         }
 
 
@@ -137,6 +140,41 @@ class PolicyPerScaleConv2D(keras.layers.Layer):
         }
 
 
+class ParallelSequential(keras.Model):
+    def __init__(self, layers, n_outputs, **kwargs):
+        super(ParallelSequential, self).__init__(**kwargs)
+        if layers[-1].units != 1:
+            raise ValueError("Last layer must have one output only...")
+        self.n_outputs = n_outputs
+        self.models = [keras.models.Sequential(layers)]
+        for i in range(self.n_outputs - 1):
+            self.models.append(keras.models.clone_model(self.models[0]))
+        self.concat = keras.layers.Concatenate()
+
+    def call(self, inputs):
+        return self.concat([model(inputs) for model in self.models])
+
+    def get_config(self):
+        layer_configs = []
+        for layer in self.models[0].layers:
+            layer_configs.append(generic_utils.serialize_keras_object(layer))
+        config = {
+            'name': self.name,
+            'layers': copy.deepcopy(layer_configs),
+            'n_outputs': self.n_outputs,
+        }
+        return config
+
+    def from_config(cls_config, custom_objects):
+        return ParallelSequential(
+            [
+                keras.layers.deserialize(layer, custom_objects=custom_objects)
+                for layer in cls_config["layers"]
+            ],
+            cls_config["n_outputs"]
+            )
+
+
 def downscale_10_tanh(x):
     return tf.tanh(x / 10)
 
@@ -158,11 +196,13 @@ custom_objects = {
     "DenseReconcat": DenseReconcat,
     "CriticPerScaleConv2D": CriticPerScaleConv2D,
     "PolicyPerScaleConv2D": PolicyPerScaleConv2D,
+    "ParallelSequential": ParallelSequential,
     "downscale_10_tanh": downscale_10_tanh,
     "downscale_100_tanh": downscale_100_tanh,
     "downscale_500_tanh": downscale_500_tanh,
     "lrelu": lrelu,
 }
+keras.utils.get_custom_objects().update(custom_objects)
 
 
 if __name__ == '__main__':
@@ -253,6 +293,23 @@ if __name__ == '__main__':
     ])
 
 
+    parallel_critic = ParallelSequential(
+        [PolicyPerScaleConv2D(
+            n_scales=2,
+            filters=16,
+            kernel_size=(2, 2),
+            strides=(1, 1),
+            padding='valid',
+            activation=lrelu,
+            pool_size=(2, 2),
+            pool_strides=(2, 2),
+            pool_padding='valid',
+        ),
+        keras.layers.Dense(10),
+        keras.layers.Dense(1)],
+        n_outputs=9,
+    )
+
     print("ENCODER")
     print(encoder.to_yaml())
     print("DECODER")
@@ -261,3 +318,10 @@ if __name__ == '__main__':
     print(critic.to_yaml())
     print("POLICY")
     print(policy.to_yaml())
+    print("PARALLEL CRITIC")
+    print(parallel_critic.to_yaml())
+
+
+    # b = keras.models.model_from_yaml(parallel_critic.to_yaml(), custom_objects=custom_objects)
+    # out = b(inp)
+    # print(out)

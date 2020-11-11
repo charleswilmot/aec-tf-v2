@@ -57,7 +57,7 @@ def get_n_free_gpus(node):
     total = os.popen("sinfo -h -p sleuths -n {} -O gres".format(node)).read()
     total = int(total.split(":")[-1])
     used = os.popen("squeue -h -w {} -O gres".format(node)).read()
-    used = sum([int(x.strip()[-1]) for x in used.strip().split() if x != "(null)"])
+    used = sum([int(x.strip()[-1]) if x.strip() != "gpu" else 1 for x in used.strip().split() if x != "(null)"])
     return total - used
 
 
