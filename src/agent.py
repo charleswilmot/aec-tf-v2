@@ -170,11 +170,16 @@ class Agent(object):
             batch_size = tf.shape(actions_indices)[0]
             indices = tf.stack([tf.range(batch_size), actions_indices], axis=-1)
             return_estimates = tf.gather_nd(return_estimates, indices)
-            loss_critic = keras.losses.Huber(delta=self.hubber_delta)(return_estimates, targets)
+            loss_function = keras.losses.Huber(
+                delta=self.hubber_delta,
+                reduction=keras.losses.Reduction.SUM,
+                # reduction=keras.losses.Reduction.SUM_OVER_BATCH_SIZE,
+            )
+            loss_critic = loss_function(return_estimates[:, tf.newaxis], targets[:, tf.newaxis])
             variables = self.models[pathway_name]["critic_models"][joint_name].variables
             grads = tape.gradient(loss_critic, variables)
             self.critic_optimizer.apply_gradients(zip(grads, variables))
-        return loss_critic
+        return loss_critic / tf.cast(batch_size, tf.float32)
 
     @tf.function
     def train(self,
