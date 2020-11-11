@@ -270,18 +270,19 @@ class Procedure(object):
             "collection/exploration_final_pan_error", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["final_pan_error"] = Mean(
             "collection/evaluation_final_pan_error", dtype=tf.float32)
-        self.tb["collection"]["exploration"]["final_vergence_1px"] = Mean(
-            "collection/exploration_final_vergence_1px", dtype=tf.float32)
-        self.tb["collection"]["evaluation"]["final_vergence_1px"] = Mean(
-            "collection/evaluation_final_vergence_1px", dtype=tf.float32)
-        self.tb["collection"]["exploration"]["final_tilt_1px"] = Mean(
-            "collection/exploration_final_tilt_1px", dtype=tf.float32)
-        self.tb["collection"]["evaluation"]["final_tilt_1px"] = Mean(
-            "collection/evaluation_final_tilt_1px", dtype=tf.float32)
-        self.tb["collection"]["exploration"]["final_pan_1px"] = Mean(
-            "collection/exploration_final_pan_1px", dtype=tf.float32)
-        self.tb["collection"]["evaluation"]["final_pan_1px"] = Mean(
-            "collection/evaluation_final_pan_1px", dtype=tf.float32)
+        for i in [1, 2, 3, 4, 6, 8, 10, 16]:
+            self.tb["collection"]["exploration"]["final_vergence_{}px".format(i)] = Mean(
+                "collection/exploration_final_vergence_{}px".format(i), dtype=tf.float32)
+            self.tb["collection"]["evaluation"]["final_vergence_{}px".format(i)] = Mean(
+                "collection/evaluation_final_vergence_{}px".format(i), dtype=tf.float32)
+            self.tb["collection"]["exploration"]["final_tilt_{}px".format(i)] = Mean(
+                "collection/exploration_final_tilt_{}px".format(i), dtype=tf.float32)
+            self.tb["collection"]["evaluation"]["final_tilt_{}px".format(i)] = Mean(
+                "collection/evaluation_final_tilt_{}px".format(i), dtype=tf.float32)
+            self.tb["collection"]["exploration"]["final_pan_{}px".format(i)] = Mean(
+                "collection/exploration_final_pan_{}px".format(i), dtype=tf.float32)
+            self.tb["collection"]["evaluation"]["final_pan_{}px".format(i)] = Mean(
+                "collection/evaluation_final_pan_{}px".format(i), dtype=tf.float32)
         self.tb["collection"]["exploration"]["critic_snr_tilt"] = Mean(
             "collection/exploration_critic_snr_tilt_db", dtype=tf.float32)
         self.tb["collection"]["evaluation"]["critic_snr_tilt"] = Mean(
@@ -901,9 +902,10 @@ class Procedure(object):
         tb["final_vergence_error"](np.mean(np.abs(final_vergence_error)))
         tb["final_tilt_error"](np.mean(np.abs(final_tilt_error)))
         tb["final_pan_error"](np.mean(np.abs(final_pan_error)))
-        tb["final_tilt_1px"](np.sum(np.abs(final_tilt_error) < 90 / 320) * 100 / len(final_tilt_error))
-        tb["final_pan_1px"](np.sum(np.abs(final_pan_error) < 90 / 320) * 100 / len(final_pan_error))
-        tb["final_vergence_1px"](np.sum(np.abs(final_vergence_error) < 90 / 320) * 100 / len(final_vergence_error))
+        for i in [1, 2, 3, 4, 6, 8, 10, 16]:
+            tb["final_tilt_{}px".format(i)](np.sum(np.abs(final_tilt_error) < i * 90 / 320) * 100 / len(final_tilt_error))
+            tb["final_pan_{}px".format(i)](np.sum(np.abs(final_pan_error) < i * 90 / 320) * 100 / len(final_pan_error))
+            tb["final_vergence_{}px".format(i)](np.sum(np.abs(final_vergence_error) < i * 90 / 320) * 100 / len(final_vergence_error))
         #
         signal = magno_critic_targets
         noise = magno_critic_targets - tilt_return_estimates
