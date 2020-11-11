@@ -11,10 +11,10 @@ critic_learning_rate:
     iteration: 0
     lr: 1e-3
   -
-    iteration: 4000
+    iteration: 10000
     lr: 1e-4
   -
-    iteration: 12000
+    iteration: 20000
     lr: 5e-5
 
 encoder_learning_rate:
@@ -22,10 +22,16 @@ encoder_learning_rate:
     iteration: 0
     lr: 1e-3
   -
-    iteration: 4000
+    iteration: 10000
     lr: 1e-4
   -
-    iteration: 12000
+    iteration: 12500
     lr: 5e-5
+  -
+    iteration: 15000
+    lr: 1e-5
+  -
+    iteration: 17500
+    lr: 5e-6
 
 test_conf_path: ${hydra:runtime.cwd}/../config/test_conf/default_at_2m.pkl

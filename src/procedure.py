@@ -931,18 +931,17 @@ class Procedure(object):
     def train(self, critic=True, encoders=True):
         self.n_global_training += 1
 
-        prev = 1e-3
-        for x in self.procedure_conf.critic_learning_rate:
-            if x.iteration > self.n_exploration_episodes:
-                self.agent.set_critic_learning_rate(prev)
+        critic_schedule = [(x.iteration, x.lr) for x in self.procedure_conf.critic_learning_rate]
+        for it, lr in reversed(critic_schedule):
+            if self.n_exploration_episodes > it:
+                self.agent.set_critic_learning_rate(lr)
                 break
-            prev = x.lr
-        prev = 1e-3
-        for x in self.procedure_conf.encoder_learning_rate:
-            if x.iteration > self.n_exploration_episodes:
-                self.agent.set_encoder_learning_rate(prev)
+
+        encoder_schedule = [(x.iteration, x.lr) for x in self.procedure_conf.encoder_learning_rate]
+        for it, lr in reversed(encoder_schedule):
+            if self.n_exploration_episodes > it:
+                self.agent.set_encoder_learning_rate(lr)
                 break
-            prev = x.lr
 
         if self.buffer.enough(self.batch_size):
             data = self.buffer.sample(self.batch_size)

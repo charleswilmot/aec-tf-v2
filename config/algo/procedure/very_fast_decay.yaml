@@ -1,0 +1,79 @@
+# @package _group_
+
+episode_length: 10
+n_evaluation_batch: 1
+batch_size: 64
+updates_per_sample: 5
+reward_scaling: 600
+
+critic_learning_rate:
+  -
+    iteration: 0
+    lr: 1e-3
+  -
+    iteration: 1000
+    lr: 1e-4
+  -
+    iteration: 2000
+    lr: 5e-5
+  -
+    iteration: 3000
+    lr: 2e-5
+  -
+    iteration: 4000
+    lr: 1e-5
+  -
+    iteration: 5000
+    lr: 5e-6
+  -
+    iteration: 6000
+    lr: 2e-6
+  -
+    iteration: 7000
+    lr: 1e-6
+  -
+    iteration: 8000
+    lr: 5e-7
+  -
+    iteration: 9000
+    lr: 2e-7
+  -
+    iteration: 10000
+    lr: 1e-7
+
+encoder_learning_rate:
+  -
+    iteration: 0
+    lr: 1e-3
+  -
+    iteration: 1000
+    lr: 1e-4
+  -
+    iteration: 2000
+    lr: 5e-5
+  -
+    iteration: 3000
+    lr: 2e-5
+  -
+    iteration: 4000
+    lr: 1e-5
+  -
+    iteration: 5000
+    lr: 5e-6
+  -
+    iteration: 6000
+    lr: 2e-6
+  -
+    iteration: 7000
+    lr: 1e-6
+  -
+    iteration: 8000
+    lr: 5e-7
+  -
+    iteration: 9000
+    lr: 2e-7
+  -
+    iteration: 10000
+    lr: 1e-7
+
+test_conf_path: ${hydra:runtime.cwd}/../config/test_conf/default_at_2m.pkl
