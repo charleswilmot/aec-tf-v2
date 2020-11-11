@@ -366,9 +366,9 @@ class Procedure(object):
         path = "./checkpoints/{:08d}".format(self.n_global_training)
         self.agent.save_weights(path)
 
-    def restore(self, path):
+    def restore(self, path, encoder=True, critic=True):
         """Restores the weights from a checkpoint"""
-        self.agent.load_weights(path)
+        self.agent.load_weights(path, encoder=encoder, critic=critic)
 
     def episode_reset_uniform_motion_screen(self, start_distances=None,
             depth_speeds=None, angular_speeds=None, directions=None,
