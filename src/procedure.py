@@ -13,6 +13,7 @@ from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw
 from test_data import TestDataContainer
+from evaluation import get_evaluation_conf
 
 
 critic_test_dtype = np.dtype([
@@ -80,6 +81,7 @@ class Procedure(object):
         #   PROCEDURE CONF
         self.procedure_conf = procedure_conf
         self.episode_length = procedure_conf.episode_length
+        self.n_evaluation_batch = procedure_conf.n_evaluation_batch
         self.updates_per_sample = procedure_conf.updates_per_sample
         self.batch_size = procedure_conf.batch_size
         self.n_simulations = simulation_conf.n
@@ -128,6 +130,21 @@ class Procedure(object):
         fake_frame_by_scale_pavro = self.get_vision()
         fake_frame_by_scale_magno = self.merge_before_after(fake_frame_by_scale_pavro, fake_frame_by_scale_pavro)
         self.agent.create_all_variables(fake_frame_by_scale_pavro, fake_frame_by_scale_magno)
+
+        self.evaluation_conf, n_sample_points = get_evaluation_conf(
+            self.n_simulations * self.n_evaluation_batch,
+            vergence_error_min=-90 / 320 * 8,
+            vergence_error_max= 90 / 320 * 8,
+            depth_min=procedure_conf.screen.min_distance,
+            depth_max=procedure_conf.screen.max_distance,
+            speed_max=procedure_conf.screen.max_speed_in_deg,
+            tilt_on=agent_conf.pathways.magno.n_actions.tilt > 1,
+            pan_on=agent_conf.pathways.magno.n_actions.pan > 1,
+            vergence_on=agent_conf.pathways.pavro.n_actions.vergence > 1,
+            cyclo_on=agent_conf.pathways.pavro.n_actions.cyclo > 1,
+        )
+        print("[procedure] evaluation will be performed on these points:")
+        print(n_sample_points)
 
         #   DEFINING DATA BUFFERS
         # training
@@ -184,7 +201,7 @@ class Procedure(object):
             ("cyclo_return_estimates", np.float32),
         ])
         self._evaluation_data_buffer = np.zeros(
-            shape=(self.n_simulations, self.episode_length),
+            shape=(self.n_simulations * self.n_evaluation_batch, self.episode_length),
             dtype=self._evaluation_data_type
         )
 
@@ -621,48 +638,69 @@ class Procedure(object):
     def evaluate(self):
         """Performs one episode of exploration, places data in the buffer"""
         time_start = time.time()
-        self.episode_reset_uniform_motion_screen(preinit=True)
-        self.episode_reset_head()
-        vision_after = self.get_vision()
-        self.simulation_pool.step_sim()
-        for iteration in range(self.episode_length):
-            vision_before = vision_after
-            vision_after = self.get_vision()
-            pavro_vision = vision_after
-            magno_vision = self.merge_before_after(vision_before, vision_after)
-            data = self.agent(pavro_vision, magno_vision)
-            actions = self.actions_indices_to_actions(
-                data["tilt_actions_indices"].numpy(),
-                data["pan_actions_indices"].numpy(),
-                data["vergence_actions_indices"].numpy(),
-                data["cyclo_actions_indices"].numpy(),
+        final_tilt_error = np.zeros(self.n_evaluation_batch * self.n_simulations)
+        final_pan_error = np.zeros(self.n_evaluation_batch * self.n_simulations)
+        final_vergence_error = np.zeros(self.n_evaluation_batch * self.n_simulations)
+        for evaluation_batch in range(self.n_evaluation_batch):
+            buffer_slice = slice(evaluation_batch * self.n_simulations, (evaluation_batch + 1) * self.n_simulations)
+            self.episode_reset_uniform_motion_screen(
+                start_distances=self.evaluation_conf["depths"][buffer_slice],
+                depth_speeds=[0] * self.n_simulations,
+                angular_speeds=self.evaluation_conf["speeds"][buffer_slice],
+                directions=self.evaluation_conf["directions"][buffer_slice],
+                texture_ids=self.evaluation_conf["stimulus"][buffer_slice],
+                preinit=True,
             )
-            for scale_name in pavro_vision:
-                self._evaluation_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
-                self._evaluation_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
-            self._evaluation_data_buffer[:, iteration]["tilt_actions_indices"] = data["tilt_actions_indices"]
-            self._evaluation_data_buffer[:, iteration]["pan_actions_indices"] = data["pan_actions_indices"]
-            self._evaluation_data_buffer[:, iteration]["vergence_actions_indices"] = data["vergence_actions_indices"]
-            self._evaluation_data_buffer[:, iteration]["cyclo_actions_indices"] = data["cyclo_actions_indices"]
-            self._evaluation_data_buffer[:, iteration]["pavro_recerr"] = data["pavro_recerr"]
-            self._evaluation_data_buffer[:, iteration]["magno_recerr"] = data["magno_recerr"]
-            self._evaluation_data_buffer[:, iteration]["tilt_return_estimates"] = data["tilt_return_estimates"].numpy()[
-                np.arange(self.n_simulations),
-                data["tilt_actions_indices"].numpy()
-            ]
-            self._evaluation_data_buffer[:, iteration]["pan_return_estimates"] = data["pan_return_estimates"].numpy()[
-                np.arange(self.n_simulations),
-                data["pan_actions_indices"].numpy()
-            ]
-            self._evaluation_data_buffer[:, iteration]["vergence_return_estimates"] = data["vergence_return_estimates"].numpy()[
-                np.arange(self.n_simulations),
-                data["vergence_actions_indices"].numpy()
-            ]
-            self._evaluation_data_buffer[:, iteration]["cyclo_return_estimates"] = data["cyclo_return_estimates"].numpy()[
-                np.arange(self.n_simulations),
-                data["cyclo_actions_indices"].numpy()
-            ]
-            self.apply_action(actions)
+            self.episode_reset_head(
+                vergence=distance_to_vergence(self.evaluation_conf["depths"][buffer_slice]) - self.evaluation_conf["vergence_errors"][buffer_slice],
+                cyclo=[0] * self.n_simulations,
+            )
+            vision_after = self.get_vision()
+            self.simulation_pool.step_sim()
+            for iteration in range(self.episode_length):
+                vision_before = vision_after
+                vision_after = self.get_vision()
+                pavro_vision = vision_after
+                magno_vision = self.merge_before_after(vision_before, vision_after)
+                data = self.agent(pavro_vision, magno_vision)
+                actions = self.actions_indices_to_actions(
+                    data["tilt_actions_indices"].numpy(),
+                    data["pan_actions_indices"].numpy(),
+                    data["vergence_actions_indices"].numpy(),
+                    data["cyclo_actions_indices"].numpy(),
+                )
+                for scale_name in pavro_vision:
+                    self._evaluation_data_buffer[buffer_slice, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
+                    self._evaluation_data_buffer[buffer_slice, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
+                self._evaluation_data_buffer[buffer_slice, iteration]["tilt_actions_indices"] = data["tilt_actions_indices"]
+                self._evaluation_data_buffer[buffer_slice, iteration]["pan_actions_indices"] = data["pan_actions_indices"]
+                self._evaluation_data_buffer[buffer_slice, iteration]["vergence_actions_indices"] = data["vergence_actions_indices"]
+                self._evaluation_data_buffer[buffer_slice, iteration]["cyclo_actions_indices"] = data["cyclo_actions_indices"]
+                self._evaluation_data_buffer[buffer_slice, iteration]["pavro_recerr"] = data["pavro_recerr"]
+                self._evaluation_data_buffer[buffer_slice, iteration]["magno_recerr"] = data["magno_recerr"]
+                self._evaluation_data_buffer[buffer_slice, iteration]["tilt_return_estimates"] = data["tilt_return_estimates"].numpy()[
+                    np.arange(self.n_simulations),
+                    data["tilt_actions_indices"].numpy()
+                ]
+                self._evaluation_data_buffer[buffer_slice, iteration]["pan_return_estimates"] = data["pan_return_estimates"].numpy()[
+                    np.arange(self.n_simulations),
+                    data["pan_actions_indices"].numpy()
+                ]
+                self._evaluation_data_buffer[buffer_slice, iteration]["vergence_return_estimates"] = data["vergence_return_estimates"].numpy()[
+                    np.arange(self.n_simulations),
+                    data["vergence_actions_indices"].numpy()
+                ]
+                self._evaluation_data_buffer[buffer_slice, iteration]["cyclo_return_estimates"] = data["cyclo_return_estimates"].numpy()[
+                    np.arange(self.n_simulations),
+                    data["cyclo_actions_indices"].numpy()
+                ]
+                self.apply_action(actions)
+            tilt_error, pan_error, vergence_error = self.get_joints_errors()
+            final_tilt_error[buffer_slice] = tilt_error
+            final_pan_error[buffer_slice] = pan_error
+            final_vergence_error[buffer_slice] = vergence_error
+        for conf, tilt, pan, vergence in zip(self.evaluation_conf, final_tilt_error, final_pan_error, final_vergence_error):
+            print(conf, vergence, tilt, pan)
         # COMPUTE TARGET
         self._evaluation_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
             self._evaluation_data_buffer[:, :-1]["pavro_recerr"] -
@@ -676,7 +714,6 @@ class Procedure(object):
         self.n_evaluation_episodes += self.n_simulations
         time_stop = time.time()
         # LOG METRICS
-        final_tilt_error, final_pan_error, final_vergence_error = self.get_joints_errors()
         with self.summary_writer.as_default():
             tf.summary.histogram("tilt", final_tilt_error, step=self.n_exploration_episodes)
             tf.summary.histogram("pan", final_pan_error, step=self.n_exploration_episodes)
@@ -694,7 +731,7 @@ class Procedure(object):
             final_vergence_error=final_vergence_error,
             final_tilt_error=final_tilt_error,
             final_pan_error=final_pan_error,
-            time=time_stop - time_start,
+            time=(time_stop - time_start) / self.n_evaluation_batch,
             exploration=False,
         )
 
