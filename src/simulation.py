@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from collections import defaultdict
 import numpy as np
+from skimage.transform import resize
 from contextlib import contextmanager
 from traceback import format_exc
 from custom_shapes import Head, Screen, UniformMotionScreen
@@ -137,7 +138,7 @@ class SimulationConsumerAbstract(mp.Process):
         self._pyrep.launch(
             self._scene,
             headless=not self._gui,
-            write_coppeliasim_stdout_to_file=True
+            write_coppeliasim_stdout_to_file=False
         )
         self._process_io["simulaton_ready"].set()
         self._main_loop()
@@ -199,6 +200,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
         self.background = None
         self.uniform_motion_screen = None
         self.scales = {}
+        self.fake_scales = {}
 
     def add_head(self):
         if self.head is None:
@@ -325,6 +327,16 @@ class SimulationConsumer(SimulationConsumerAbstract):
             }
 
     @communicate_return_value
+    def get_fake_vision(self, color_scaling=None):
+        vision = self.get_vision(color_scaling=color_scaling)
+        return {
+            scale_id: resize(
+                vision["fake_scale"][scale_desc.start:scale_desc.stop, scale_desc.start:scale_desc.stop],
+                scale_desc.resolution, anti_aliasing=True)
+            for scale_id, scale_desc in self.fake_scales.items()
+        }
+
+    @communicate_return_value
     def add_scale(self, id, resolution, view_angle):
         if id in self.scales:
             raise ValueError("Scale with id {} is already present".format(id))
@@ -349,6 +361,27 @@ class SimulationConsumer(SimulationConsumerAbstract):
             self.scales.pop(id)
         else:
             raise ValueError("Scale with id {} does not exist".format(id))
+
+    @communicate_return_value
+    def add_fake_scales(self, scales):
+        for s in scales.values():
+            if s.resolution[0] != s.resolution[1]:
+                raise ValueError("The fake scales must be square!")
+        max_view_angle = max(s.view_angle for s in scales.values())
+        min_pixel_size = min(s.view_angle / s.resolution[0] for s in scales.values())
+        max_resolution = int(np.ceil(max_view_angle / min_pixel_size))
+        resolution = [max_resolution, max_resolution]
+        self.add_scale("fake_scale", resolution, max_view_angle)
+        print(resolution, max_view_angle)
+        self.fake_scales.update(scales)
+        for scale, scale_desc in scales.items():
+            downscaling_factor = scale_desc.view_angle / scale_desc.resolution[0] / min_pixel_size
+            n_pixels = scale_desc.view_angle * max_resolution / max_view_angle
+            start = int((max_resolution - n_pixels) / 2)
+            stop = int(start + scale_desc.resolution[0] * downscaling_factor)
+            self.fake_scales[scale].start = start
+            self.fake_scales[scale].stop = stop
+            print(scale, start, stop)
 
     def apply_action(self, action):
         tilt_acceleration, pan_acceleration, vergence_velocity, cyclo_velocity = action
@@ -903,4 +936,90 @@ if __name__ == '__main__':
         #     for j in range(10):
         #         simulation.step_sim()
 
-    test_7()
+    class Scale:
+        def __init__(self, resolution, view_angle):
+            self.resolution = resolution
+            self.view_angle = view_angle
+
+    def test_fake_scales():
+        import matplotlib.pyplot as plt
+
+        simulation = SimulationProducer(gui=True)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        fine_scale = Scale(resolution=[32, 32], view_angle=9.0)
+        coarse_scale = Scale(resolution=[32, 32], view_angle=27.0)
+        scales = {
+            "fine": fine_scale,
+            "coarse": coarse_scale,
+        }
+        # simulation.add_scale("fine", (32, 32), 9.0)
+        # simulation.add_scale("coarse", (32, 32), 27.0)
+        simulation.add_fake_scales(scales)
+        simulation.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=0,
+            direction=0,
+            texture_id=0,
+            preinit=False,
+        )
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        fake_vision = simulation.get_fake_vision()
+        simulation.close()
+
+        simulation = SimulationProducer(gui=True)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        fine_scale = Scale(resolution=[32, 32], view_angle=9.0)
+        coarse_scale = Scale(resolution=[32, 32], view_angle=27.0)
+        simulation.add_scale("fine", (32, 32), 9.0)
+        simulation.add_scale("coarse", (32, 32), 27.0)
+        simulation.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=0,
+            direction=0,
+            texture_id=0,
+            preinit=False,
+        )
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        vision = simulation.get_vision()
+        simulation.close()
+
+        fig = plt.figure()
+        ax00 = fig.add_subplot(241)
+        ax10 = fig.add_subplot(242)
+        ax01 = fig.add_subplot(243)
+        ax11 = fig.add_subplot(244)
+        ax20 = fig.add_subplot(245)
+        ax30 = fig.add_subplot(246)
+        ax21 = fig.add_subplot(247)
+        ax31 = fig.add_subplot(248)
+        ax00.imshow((fake_vision["fine"][..., :3] + 1) * 2)
+        ax10.imshow((fake_vision["fine"][..., 3:] + 1) * 2)
+        ax01.imshow((fake_vision["coarse"][..., :3] + 1) * 2)
+        ax11.imshow((fake_vision["coarse"][..., 3:] + 1) * 2)
+        ax20.imshow((vision["fine"][..., :3] + 1) * 2)
+        ax30.imshow((vision["fine"][..., 3:] + 1) * 2)
+        ax21.imshow((vision["coarse"][..., :3] + 1) * 2)
+        ax31.imshow((vision["coarse"][..., 3:] + 1) * 2)
+        plt.show()
+
+    test_fake_scales()
