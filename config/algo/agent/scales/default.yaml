@@ -7,6 +7,8 @@ description:
   fine:
     resolution: 32
     view_angle: 9
+    downsampling: 3
   coarse:
     resolution: 32
     view_angle: 27
+    downsampling: 3

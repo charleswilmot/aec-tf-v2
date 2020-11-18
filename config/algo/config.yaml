@@ -1,5 +1,5 @@
 buffer:
-  size: 2000
+  size: 500
 
 simulation:
   n: 20
@@ -7,10 +7,10 @@ simulation:
     -
 
 experiment:
-  n_episodes: 20000
+  n_episodes: 50000
   critic_every: 1
   encoders_every: 1
-  evaluate_every: 10
+  evaluate_every: 25
   test_every: 250
   test_at_start: False
   record_episode_every: 250
@@ -21,7 +21,7 @@ experiment:
 
 
 defaults:
-  - procedure: default
+  - procedure: no_decay
   - procedure/screen: default
   - agent: default
   - agent/exploration: default

@@ -1,7 +1,7 @@
 # @package _group_
 
 textures_path: /home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/
-size: 1.5
+size: 2.0
 min_distance: 0.5
 max_distance: 5.0
 max_depth_speed: 0.00

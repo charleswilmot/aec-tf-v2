@@ -1,15 +1,15 @@
 # @package _group_
 
 episode_length: 10
-n_evaluation_batch: 1
+n_evaluation_batch: 20
 batch_size: 64
-updates_per_sample: 5
-reward_scaling: 600
+updates_per_sample: 16
+reward_scaling: 1500
 
 critic_learning_rate:
   -
     iteration: 0
-    lr: 1e-3
+    lr: 8e-5
 
 encoder_learning_rate:
   -

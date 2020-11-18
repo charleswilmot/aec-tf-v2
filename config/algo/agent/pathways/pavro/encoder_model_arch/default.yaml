@@ -47,8 +47,8 @@ config:
       bias_regularizer: null
       data_format: channels_last
       dilation_rate:
-        - 1
-        - 1
+      - 1
+      - 1
       dtype: float32
       filters: 24
       kernel_constraint: null

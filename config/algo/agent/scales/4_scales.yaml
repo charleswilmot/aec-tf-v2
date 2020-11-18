@@ -7,12 +7,16 @@ description:
   fine:
     resolution: 32
     view_angle: 9
+    downsampling: 3
   middle:
     resolution: 32
     view_angle: 18
+    downsampling: 3
   coarse:
     resolution: 32
     view_angle: 27
+    downsampling: 3
   very_coarse:
     resolution: 32
     view_angle: 36
+    downsampling: 3
