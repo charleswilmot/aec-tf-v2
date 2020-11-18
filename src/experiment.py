@@ -25,7 +25,7 @@ def experiment(cfg):
     tf.config.threading.set_intra_op_parallelism_threads(8)
     with Procedure(agent_conf, buffer_conf, simulation_conf, procedure_conf) as procedure:
         n_episode_batch = experiment_conf.n_episodes // simulation_conf.n
-        if experiment_conf.restore_encoder is not None:
+        if experiment_conf.restore_encoder is not None and experiment_conf.restore_encoder != "None":
             procedure.restore(experiment_conf.restore_encoder, encoder=True, critic=False)
         if experiment_conf.test_at_start:
             procedure.test()
@@ -45,6 +45,7 @@ def experiment(cfg):
                 save,
                 record,
             ))
+            procedure.collect_train_and_log(critic=critic, encoders=encoders, evaluation=evaluation)
             if record:
                 procedure.record(
                     video_name='./replays/replay_{:05d}'.format(episode_batch + 1),
@@ -60,7 +61,6 @@ def experiment(cfg):
                 procedure.test()
             if save:
                 procedure.save()
-            procedure.collect_train_and_log(critic=critic, encoders=encoders, evaluation=evaluation)
             if print_info:
                 print('n_exploration_episodes  ...  ', procedure.n_exploration_episodes)
                 print('n_evaluation_episodes  ....  ', procedure.n_evaluation_episodes)
