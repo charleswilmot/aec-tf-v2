@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from collections import defaultdict
 import numpy as np
+from skimage.transform import resize
 from contextlib import contextmanager
 from traceback import format_exc
 from custom_shapes import Head, Screen, UniformMotionScreen
@@ -199,6 +200,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
         self.background = None
         self.uniform_motion_screen = None
         self.scales = {}
+        self.scales_resolutions = {}
 
     def add_head(self):
         if self.head is None:
@@ -282,14 +284,14 @@ class SimulationConsumer(SimulationConsumerAbstract):
         else:
             self.uniform_motion_screen.move()
 
-    def add_camera(self, eye, resolution, view_angle):
+    def add_camera(self, eye, resolution, view_angle, downsampling):
         if self.head is None:
             raise ValueError("Can not add a camera with no head")
         else:
             position = self.head.get_eye_position(eye)
             orientation = self.head.get_eye_orientation(eye)
             vision_sensor = VisionSensor.create(
-                resolution=resolution,
+                resolution=[r * downsampling for r in resolution],
                 position=position,
                 orientation=orientation,
                 view_angle=view_angle,
@@ -309,32 +311,39 @@ class SimulationConsumer(SimulationConsumerAbstract):
     def get_vision(self, color_scaling=None):
         if color_scaling is None:
             return {
-                scale_id: np.concatenate([
-                    self._cams[left].capture_rgb(),
-                    self._cams[right].capture_rgb()
-                    ], axis=-1) * 2 - 1
+                scale_id: resize(
+                    np.concatenate([
+                        self._cams[left].capture_rgb(),
+                        self._cams[right].capture_rgb()
+                        ], axis=-1) * 2 - 1,
+                    self.scales_resolutions[scale_id],
+                    anti_aliasing=True)
                 for scale_id, (left, right) in self.scales.items()
             }
         else:
             return {
-                scale_id: np.concatenate([
-                    self._cams[left].capture_rgb(),
-                    self._cams[right].capture_rgb()
-                    ], axis=-1) * color_scaling[scale_id] * 2 - 1
+                scale_id: resize(
+                    np.concatenate([
+                        self._cams[left].capture_rgb(),
+                        self._cams[right].capture_rgb()
+                        ], axis=-1) * color_scaling[scale_id] * 2 - 1,
+                    self.scales_resolutions[scale_id],
+                    anti_aliasing=True)
                 for scale_id, (left, right) in self.scales.items()
             }
 
     @communicate_return_value
-    def add_scale(self, id, resolution, view_angle):
+    def add_scale(self, id, resolution, view_angle, downsampling):
         if id in self.scales:
             raise ValueError("Scale with id {} is already present".format(id))
         else:
             self.head.set_joints_velocities(0, 0, 0, 0)
             self.head.set_joints_positions(0, 0, 0, 0)
             # self._pyrep.step() # step to make sure that the eyes reached the target position of 0 (might be useless)
-            left = self.add_camera('left', resolution, view_angle)
-            right = self.add_camera('right', resolution, view_angle)
+            left = self.add_camera('left', resolution, view_angle, downsampling)
+            right = self.add_camera('right', resolution, view_angle, downsampling)
             self.scales[id] = (left, right)
+            self.scales_resolutions[id] = resolution[::-1]
             return id
 
     @communicate_return_value
@@ -347,6 +356,7 @@ class SimulationConsumer(SimulationConsumerAbstract):
             self.delete_camera(left)
             self.delete_camera(right)
             self.scales.pop(id)
+            self.scales_resolutions.pop(id)
         else:
             raise ValueError("Scale with id {} does not exist".format(id))
 
@@ -903,4 +913,85 @@ if __name__ == '__main__':
         #     for j in range(10):
         #         simulation.step_sim()
 
-    test_7()
+
+    def test_new_cams():
+        import matplotlib.pyplot as plt
+
+        simulation = SimulationProducer(gui=True)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        simulation.add_scale("fine", (32, 32), 9.0, 3)
+        simulation.add_scale("coarse", (32, 32), 27.0, 3)
+        simulation.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=0,
+            direction=0,
+            texture_id=0,
+            preinit=False,
+        )
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        vision_ds3 = simulation.get_vision()
+        simulation.close()
+
+        simulation = SimulationProducer(gui=True)
+        simulation.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulation.start_sim()
+        simulation.step_sim()
+        simulation.add_background("ny_times_square")
+        simulation.add_head()
+        simulation.add_scale("fine", (32, 32), 9.0, 1)
+        simulation.add_scale("coarse", (32, 32), 27.0, 1)
+        simulation.episode_reset_uniform_motion_screen(
+            start_distance=2,
+            depth_speed=0,
+            angular_speed=0,
+            direction=0,
+            texture_id=0,
+            preinit=False,
+        )
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        simulation.step_sim()
+        vision_ds1 = simulation.get_vision()
+        simulation.close()
+
+        fig = plt.figure()
+        ax00 = fig.add_subplot(241)
+        ax10 = fig.add_subplot(242)
+        ax01 = fig.add_subplot(243)
+        ax11 = fig.add_subplot(244)
+        ax02 = fig.add_subplot(245)
+        ax12 = fig.add_subplot(246)
+        ax03 = fig.add_subplot(247)
+        ax13 = fig.add_subplot(248)
+        ax00.imshow((vision_ds1["fine"][..., :3] + 1) * 2)
+        ax10.imshow((vision_ds1["fine"][..., 3:] + 1) * 2)
+        ax01.imshow((vision_ds1["coarse"][..., :3] + 1) * 2)
+        ax11.imshow((vision_ds1["coarse"][..., 3:] + 1) * 2)
+        ax02.imshow((vision_ds3["fine"][..., :3] + 1) * 2)
+        ax12.imshow((vision_ds3["fine"][..., 3:] + 1) * 2)
+        ax03.imshow((vision_ds3["coarse"][..., :3] + 1) * 2)
+        ax13.imshow((vision_ds3["coarse"][..., 3:] + 1) * 2)
+        ax00.set_title("DS1 fine scale left")
+        ax10.set_title("DS1 fine scale right")
+        ax01.set_title("DS1 coarse scale left")
+        ax11.set_title("DS1 coarse scale right")
+        ax02.set_title("DS3 fine scale left")
+        ax12.set_title("DS3 fine scale right")
+        ax03.set_title("DS3 coarse scale left")
+        ax13.set_title("DS3 coarse scale right")
+        plt.show()
+
+    test_new_cams()

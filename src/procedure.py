@@ -113,7 +113,7 @@ class Procedure(object):
         self.simulation_pool.add_background("ny_times_square")
         self.simulation_pool.add_head()
         for scale, scale_conf in agent_conf.scales.description.items():
-            self.simulation_pool.add_scale(scale, (scale_conf.resolution, scale_conf.resolution), scale_conf.view_angle)
+            self.simulation_pool.add_scale(scale, (scale_conf.resolution, scale_conf.resolution), scale_conf.view_angle, scale_conf.downsampling)
         self.simulation_pool.add_uniform_motion_screen(
             textures_path=procedure_conf.screen.textures_path,
             size=procedure_conf.screen.size,
@@ -463,7 +463,7 @@ class Procedure(object):
         black_frame = np.zeros(shape=(resolution[1], resolution[0] // 2, 3), dtype=np.uint8)
         video_names = [video_name + "_{:02d}.mp4".format(i) for i in range(self.n_simulations)]
         writers = [get_writer(name, fps=25) for name in video_names]
-        self.simulation_pool.add_scale("record", resolution, 90.0)
+        self.simulation_pool.add_scale("record", resolution, 90.0, 1)
         color_scaling = self.get_color_scaling()
         n_episodes_done = 0
         while n_episodes_done < n_episodes:
