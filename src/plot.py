@@ -48,6 +48,32 @@ def recerr_wrt_error(ax, errors, reconstruction_errors,
         ax.legend()
 
 
+def predicted_recerr_wrt_error(ax, errors, reconstruction_errors, actions, values, reward_scaling=600,
+        ylim=[0, 0.04], title=None, xlabel=None, ylabel=None, legend=False):
+    # print("\n###")
+    # print(np.concatenate([errors, values], axis=-1))
+    # print("###\n")
+    ax.plot(errors, reconstruction_errors, 'b-', alpha=0.6, linewidth=1)
+    ax.axvline(0, color="k", linestyle="--")
+    ax.axvline(-1, color="k", linestyle="--", alpha=0.3)
+    ax.axvline(1, color="k", linestyle="--", alpha=0.3)
+    x = errors + actions
+    y = reconstruction_errors - values / reward_scaling
+    c = actions
+    s = 16 * np.abs(actions).flatten() + 0.6
+    ax.scatter(x, y, s=s, c=c, cmap='seismic', vmin=-1.125, vmax=1.125)
+    # other cmaps: seismic, winter
+    #
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.set_ylim(ylim)
+    if ylabel is None:
+        ax.set_yticks([])
+    if legend:
+        ax.legend()
+
+
 def action_wrt_error(ax, errors, actions, yscale, title=None, xlabel=None, ylabel=None, nbins=17, range=(-1.125, 1.125)):
     histograms = []
     edges = []

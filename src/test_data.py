@@ -267,6 +267,60 @@ class TestDataContainer:
                 legend=True
             )
 
+    def plot_predicted_recerr_wrt_error(self, path, ylim=[0, 0.04], save=True):
+        if self.missing_data("wrt_pan_error", "wrt_tilt_error", "wrt_vergence_error", "wrt_cyclo_pos"):
+            return
+        for stimulus in self.data["test_description"]["wrt_pan_error"]["stimulus"]:
+            with plot.FigureManager(path + "/reconstruction_error_predicted_s{}.png".format(stimulus), save=save) as fig:
+                ax = fig.add_subplot(141)
+                data = self.data_by_name("wrt_pan_error", dim0="conf.stimulus", sort_order="conf.pan_error")
+                plot.predicted_recerr_wrt_error(
+                    ax,
+                    data["result"]["pan_error"][stimulus] * 320 / 90,
+                    data["result"]["recerr_magno"][stimulus],
+                    data["result"]["pan_action"][stimulus],
+                    data["result"]["pan_return_estimates"][stimulus],
+                    ylim=ylim,
+                    xlabel="pan error (px/it)",
+                    ylabel="Reconstruction error",
+                )
+
+                ax = fig.add_subplot(142)
+                data = self.data_by_name("wrt_tilt_error", dim0="conf.stimulus", sort_order="conf.tilt_error")
+                plot.predicted_recerr_wrt_error(
+                    ax,
+                    data["result"]["tilt_error"][stimulus] * 320 / 90,
+                    data["result"]["recerr_magno"][stimulus],
+                    data["result"]["tilt_action"][stimulus],
+                    data["result"]["tilt_return_estimates"][stimulus],
+                    ylim=ylim,
+                    xlabel="tilt error (px/it)",
+                )
+
+                ax = fig.add_subplot(143)
+                data = self.data_by_name("wrt_vergence_error", dim0="conf.stimulus", sort_order="conf.vergence_error")
+                plot.predicted_recerr_wrt_error(
+                    ax,
+                    data["result"]["vergence_error"][stimulus] * 320 / 90,
+                    data["result"]["recerr_pavro"][stimulus],
+                    data["result"]["vergence_action"][stimulus],
+                    data["result"]["vergence_return_estimates"][stimulus],
+                    ylim=ylim,
+                    xlabel="vergence error (px)",
+                )
+
+                ax = fig.add_subplot(144)
+                data = self.data_by_name("wrt_cyclo_pos", dim0="conf.stimulus", sort_order="conf.cyclo_pos")
+                plot.predicted_recerr_wrt_error(
+                    ax,
+                    data["result"]["cyclo_pos"][stimulus] * 320 / 90,
+                    data["result"]["recerr_pavro"][stimulus],
+                    data["result"]["cyclo_action"][stimulus],
+                    data["result"]["cyclo_return_estimates"][stimulus],
+                    ylim=ylim,
+                    xlabel="cyclo error (deg)",
+                )
+
     def plot_action_wrt_error(self, path, save=True):
         if self.missing_data("wrt_pan_error", "wrt_tilt_error", "wrt_vergence_error", "wrt_cyclo_pos"):
             return
@@ -631,6 +685,7 @@ class TestDataContainer:
     def plot(self, path, save=True):
         os.makedirs(path, exist_ok=True)
         self.plot_recerr_wrt_error(path, save=save)
+        self.plot_predicted_recerr_wrt_error(path, save=save)
         self.plot_action_wrt_error(path, save=save)
         self.plot_action_wrt_error_individual(path, save=save)
         self.plot_abs_error_in_episode(path, save=save)
