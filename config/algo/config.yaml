@@ -27,13 +27,13 @@ defaults:
   - agent/exploration: default
   - agent/scales: default
   - agent/pathways/pavro: log_vergence
-  - agent/pathways/pavro/vergence_critic_model_arch: default
-  - agent/pathways/pavro/cyclo_critic_model_arch: default
+  - agent/pathways/pavro/vergence_critic_model_arch: conv_32_dense_200_dense_200_dense_n
+  - agent/pathways/pavro/cyclo_critic_model_arch: conv_32_dense_200_dense_200_dense_n
   - agent/pathways/pavro/encoder_model_arch: default
   - agent/pathways/pavro/decoder_model_arch: default
   - agent/pathways/magno: log_pan_tilt
-  - agent/pathways/magno/tilt_critic_model_arch: default
-  - agent/pathways/magno/pan_critic_model_arch: default
+  - agent/pathways/magno/tilt_critic_model_arch: conv_32_dense_200_dense_200_dense_n
+  - agent/pathways/magno/pan_critic_model_arch: conv_32_dense_200_dense_200_dense_n
   - agent/pathways/magno/encoder_model_arch: default
   - agent/pathways/magno/decoder_model_arch: default
 
