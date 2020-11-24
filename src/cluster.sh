@@ -5,7 +5,5 @@
 #SBATCH -LXserver
 #SBATCH --gres gpu:1
 
-##SBATCH --exclude turbine,vane
-
 
 srun -u python remote_experiment.py "$@"

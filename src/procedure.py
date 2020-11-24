@@ -73,7 +73,7 @@ anaglyph_matrix = np.array([
 
 
 def anaglyph(left_right):
-    return np.matmul((left_right + 1) * 127.5, anaglyph_matrix).astype(np.uint8)
+    return np.clip(np.matmul((left_right + 1) * 127.5, anaglyph_matrix), 0, 255).astype(np.uint8)
 
 
 class Procedure(object):
