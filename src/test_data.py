@@ -6,6 +6,9 @@ from itertools import product, starmap
 from collections import defaultdict
 
 
+DEG_TO_PX = 320 / 90
+
+
 dttest_case = np.dtype([
     ("stimulus", np.int32),
     ("object_distance", np.float32),
@@ -229,7 +232,7 @@ class TestDataContainer:
             data = self.data_by_name("wrt_pan_error", dim0="conf.stimulus", sort_order="conf.pan_error")
             plot.recerr_wrt_error(
                 ax,
-                data["result"]["pan_error"] * 320 / 90,
+                data["result"]["pan_error"] * DEG_TO_PX,
                 data["result"]["recerr_magno"],
                 ylim=ylim,
                 xlabel="pan error (px/it)",
@@ -240,7 +243,7 @@ class TestDataContainer:
             data = self.data_by_name("wrt_tilt_error", dim0="conf.stimulus", sort_order="conf.tilt_error")
             plot.recerr_wrt_error(
                 ax,
-                data["result"]["tilt_error"] * 320 / 90,
+                data["result"]["tilt_error"] * DEG_TO_PX,
                 data["result"]["recerr_magno"],
                 ylim=ylim,
                 xlabel="tilt error (px/it)",
@@ -250,7 +253,7 @@ class TestDataContainer:
             data = self.data_by_name("wrt_vergence_error", dim0="conf.stimulus", sort_order="conf.vergence_error")
             plot.recerr_wrt_error(
                 ax,
-                data["result"]["vergence_error"] * 320 / 90,
+                data["result"]["vergence_error"] * DEG_TO_PX,
                 data["result"]["recerr_pavro"],
                 ylim=ylim,
                 xlabel="vergence error (px)",
@@ -260,7 +263,7 @@ class TestDataContainer:
             data = self.data_by_name("wrt_cyclo_pos", dim0="conf.stimulus", sort_order="conf.cyclo_pos")
             plot.recerr_wrt_error(
                 ax,
-                data["result"]["cyclo_pos"] * 320 / 90,
+                data["result"]["cyclo_pos"] * DEG_TO_PX,
                 data["result"]["recerr_pavro"],
                 ylim=ylim,
                 xlabel="cyclo error (deg)",
@@ -276,9 +279,9 @@ class TestDataContainer:
                 data = self.data_by_name("wrt_pan_error", dim0="conf.stimulus", sort_order="conf.pan_error")
                 plot.predicted_recerr_wrt_error(
                     ax,
-                    data["result"]["pan_error"][stimulus] * 320 / 90,
+                    data["result"]["pan_error"][stimulus] * DEG_TO_PX,
                     data["result"]["recerr_magno"][stimulus],
-                    data["result"]["pan_action"][stimulus],
+                    data["result"]["pan_action"][stimulus] * DEG_TO_PX,
                     data["result"]["pan_return_estimates"][stimulus],
                     ylim=ylim,
                     xlabel="pan error (px/it)",
@@ -289,9 +292,9 @@ class TestDataContainer:
                 data = self.data_by_name("wrt_tilt_error", dim0="conf.stimulus", sort_order="conf.tilt_error")
                 plot.predicted_recerr_wrt_error(
                     ax,
-                    data["result"]["tilt_error"][stimulus] * 320 / 90,
+                    data["result"]["tilt_error"][stimulus] * DEG_TO_PX,
                     data["result"]["recerr_magno"][stimulus],
-                    data["result"]["tilt_action"][stimulus],
+                    data["result"]["tilt_action"][stimulus] * DEG_TO_PX,
                     data["result"]["tilt_return_estimates"][stimulus],
                     ylim=ylim,
                     xlabel="tilt error (px/it)",
@@ -301,9 +304,9 @@ class TestDataContainer:
                 data = self.data_by_name("wrt_vergence_error", dim0="conf.stimulus", sort_order="conf.vergence_error")
                 plot.predicted_recerr_wrt_error(
                     ax,
-                    data["result"]["vergence_error"][stimulus] * 320 / 90,
+                    data["result"]["vergence_error"][stimulus] * DEG_TO_PX,
                     data["result"]["recerr_pavro"][stimulus],
-                    data["result"]["vergence_action"][stimulus],
+                    data["result"]["vergence_action"][stimulus] * DEG_TO_PX,
                     data["result"]["vergence_return_estimates"][stimulus],
                     ylim=ylim,
                     xlabel="vergence error (px)",
@@ -313,7 +316,7 @@ class TestDataContainer:
                 data = self.data_by_name("wrt_cyclo_pos", dim0="conf.stimulus", sort_order="conf.cyclo_pos")
                 plot.predicted_recerr_wrt_error(
                     ax,
-                    data["result"]["cyclo_pos"][stimulus] * 320 / 90,
+                    data["result"]["cyclo_pos"][stimulus],
                     data["result"]["recerr_pavro"][stimulus],
                     data["result"]["cyclo_action"][stimulus],
                     data["result"]["cyclo_return_estimates"][stimulus],
@@ -327,22 +330,23 @@ class TestDataContainer:
         with plot.FigureManager(path + "/policy.png", save=save) as fig:
             ax = fig.add_subplot(141)
             data = self.data_by_name("wrt_pan_error", dim0="conf.pan_error")
+
             plot.action_wrt_error(
                 ax,
-                data["conf"]["pan_error"][:, 0],
-                data["result"]["pan_action"],
-                1,
+                data["conf"]["pan_error"][:, 0] * DEG_TO_PX,
+                data["result"]["pan_action"] * DEG_TO_PX,
+                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
                 xlabel="pan error (px/it)",
-                ylabel="action"
+                ylabel="action\n(in px/it² for pan and tilt, in px/it for vergence, in deg/it for cyclo)"
             )
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("wrt_tilt_error", dim0="conf.tilt_error")
             plot.action_wrt_error(
                 ax,
-                data["conf"]["tilt_error"][:, 0],
-                data["result"]["tilt_action"],
-                1,
+                data["conf"]["tilt_error"][:, 0] * DEG_TO_PX,
+                data["result"]["tilt_action"] * DEG_TO_PX,
+                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
                 xlabel="tilt error (px/it)",
             )
 
@@ -350,9 +354,9 @@ class TestDataContainer:
             data = self.data_by_name("wrt_vergence_error", dim0="conf.vergence_error")
             plot.action_wrt_error(
                 ax,
-                data["conf"]["vergence_error"][:, 0],
-                data["result"]["vergence_action"],
-                1,
+                data["conf"]["vergence_error"][:, 0] * DEG_TO_PX,
+                data["result"]["vergence_action"] * DEG_TO_PX,
+                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
                 xlabel="vergence error (px)",
             )
 
@@ -362,7 +366,7 @@ class TestDataContainer:
                 ax,
                 data["conf"]["cyclo_pos"][:, 0],
                 data["result"]["cyclo_action"],
-                1,
+                [-1, 0, 1],
                 xlabel="cyclo pos (deg)",
             )
 
@@ -374,20 +378,18 @@ class TestDataContainer:
             data = self.data_by_name("wrt_pan_error", dim0="conf.pan_error")
             plot.action_wrt_error_individual(
                 ax,
-                data["conf"]["pan_error"][:, 0],
-                data["result"]["pan_action"],
-                1,
+                data["conf"]["pan_error"][:, 0] * DEG_TO_PX,
+                data["result"]["pan_action"] * DEG_TO_PX,
                 xlabel="pan error (px/it)",
-                ylabel="action"
+                ylabel="action\n(in px/it² for pan and tilt, in px/it for vergence, in deg/it for cyclo)"
             )
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("wrt_tilt_error", dim0="conf.tilt_error")
             plot.action_wrt_error_individual(
                 ax,
-                data["conf"]["tilt_error"][:, 0],
-                data["result"]["tilt_action"],
-                1,
+                data["conf"]["tilt_error"][:, 0] * DEG_TO_PX,
+                data["result"]["tilt_action"] * DEG_TO_PX,
                 xlabel="tilt error (px/it)",
             )
 
@@ -395,9 +397,8 @@ class TestDataContainer:
             data = self.data_by_name("wrt_vergence_error", dim0="conf.vergence_error")
             plot.action_wrt_error_individual(
                 ax,
-                data["conf"]["vergence_error"][:, 0],
-                data["result"]["vergence_action"],
-                1,
+                data["conf"]["vergence_error"][:, 0] * DEG_TO_PX,
+                data["result"]["vergence_action"] * DEG_TO_PX,
                 xlabel="vergence error (px)",
             )
 
@@ -407,7 +408,6 @@ class TestDataContainer:
                 ax,
                 data["conf"]["cyclo_pos"][:, 0],
                 data["result"]["cyclo_action"],
-                1,
                 xlabel="cyclo pos (deg)",
             )
 
@@ -419,32 +419,35 @@ class TestDataContainer:
             data = self.data_by_name("pan_speed_trajectory")
             plot.data_wrt_episode_mean_std(
                 ax,
-                np.abs(data["result"]["pan_error"]),
+                np.abs(data["result"]["pan_error"]) * DEG_TO_PX,
                 std=True,
-                ylim=[-5, 5],
-                xlabel="pan",
-                ylabel="Joint error"
+                ylim=[-0.1, 3.5],
+                xlabel="#Iteration (pan)",
+                ylabel="Joint error\n(px/it for pan and tilt, px for vergence, deg for cyclo)"
             )
+            ax.axhline(1, color="k", linestyle="--", alpha=0.5)
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("tilt_speed_trajectory")
             plot.data_wrt_episode_mean_std(
                 ax,
-                np.abs(data["result"]["tilt_error"]),
+                np.abs(data["result"]["tilt_error"]) * DEG_TO_PX,
                 std=True,
-                ylim=[-5, 5],
-                xlabel="tilt",
+                ylim=[-0.1, 3.5],
+                xlabel="#Iteration (tilt)",
             )
+            ax.axhline(1, color="k", linestyle="--", alpha=0.5)
 
             ax = fig.add_subplot(143)
             data = self.data_by_name("vergence_trajectory")
             plot.data_wrt_episode_mean_std(
                 ax,
-                np.abs(data["result"]["vergence_error"]),
+                np.abs(data["result"]["vergence_error"]) * DEG_TO_PX,
                 std=True,
-                ylim=[-5, 5],
-                xlabel="vergence",
+                ylim=[-0.1, 3.5],
+                xlabel="#Iteration (vergence)",
             )
+            ax.axhline(1, color="k", linestyle="--", alpha=0.5)
 
             ax = fig.add_subplot(144)
             data = self.data_by_name("cyclo_trajectory")
@@ -452,8 +455,8 @@ class TestDataContainer:
                 ax,
                 np.abs(data["result"]["cyclo_pos"]),
                 std=True,
-                ylim=[-5, 5],
-                xlabel="cyclo",
+                ylim=[-0.1, 3.5],
+                xlabel="#Iteration (cyclo)",
             )
 
     def plot_error_in_episode(self, path, save=True):
@@ -463,46 +466,49 @@ class TestDataContainer:
             ax = fig.add_subplot(141)
             data = self.data_by_name("pan_speed_trajectory")
             errors = data["conf"]["pan_error"]
-            ylim = [np.min(errors) * 1.5 * 320 / 90, np.max(errors) * 1.5 * 320 / 90]
+            ylim = [-4, 4]
             plot.data_wrt_episode_std_quantile(
                 ax,
-                data["result"]["pan_error"] * 320 / 90,
+                data["result"]["pan_error"] * DEG_TO_PX,
                 ylim=ylim,
-                xlabel="pan",
-                ylabel="Joint error"
+                xlabel="#Iteration (pan)",
+                ylabel="Joint error\n(px/it for pan and tilt, px for vergence, deg for cyclo)"
             )
+            ax.axhline(1, color="k", linestyle="--", alpha=0.5)
+            ax.axhline(-1, color="k", linestyle="--", alpha=0.5)
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("tilt_speed_trajectory")
             errors = data["conf"]["tilt_error"]
-            ylim = [np.min(errors) * 1.5 * 320 / 90, np.max(errors) * 1.5 * 320 / 90]
             plot.data_wrt_episode_std_quantile(
                 ax,
-                data["result"]["tilt_error"] * 320 / 90,
+                data["result"]["tilt_error"] * DEG_TO_PX,
                 ylim=ylim,
-                xlabel="tilt",
+                xlabel="#Iteration (tilt)",
             )
+            ax.axhline(1, color="k", linestyle="--", alpha=0.5)
+            ax.axhline(-1, color="k", linestyle="--", alpha=0.5)
 
             ax = fig.add_subplot(143)
             data = self.data_by_name("vergence_trajectory")
             errors = data["conf"]["vergence_error"]
-            ylim = [np.min(errors) * 1.5 * 320 / 90, np.max(errors) * 1.5 * 320 / 90]
             plot.data_wrt_episode_std_quantile(
                 ax,
-                data["result"]["vergence_error"] * 320 / 90,
+                data["result"]["vergence_error"] * DEG_TO_PX,
                 ylim=ylim,
-                xlabel="vergence",
+                xlabel="#Iteration (vergence)",
             )
+            ax.axhline(1, color="k", linestyle="--", alpha=0.5)
+            ax.axhline(-1, color="k", linestyle="--", alpha=0.5)
 
             ax = fig.add_subplot(144)
             data = self.data_by_name("cyclo_trajectory")
             errors = data["conf"]["cyclo_pos"]
-            ylim = [np.min(errors) * 1.5 * 320 / 90, np.max(errors) * 1.5 * 320 / 90]
             plot.data_wrt_episode_std_quantile(
                 ax,
-                data["result"]["cyclo_pos"] * 320 / 90,
+                data["result"]["cyclo_pos"] * DEG_TO_PX,
                 ylim=ylim,
-                xlabel="cyclo",
+                xlabel="#Iteration (cyclo)",
             )
 
     def plot_critic_error(self, path, save=True):

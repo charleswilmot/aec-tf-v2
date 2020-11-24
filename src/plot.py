@@ -48,7 +48,7 @@ def recerr_wrt_error(ax, errors, reconstruction_errors,
         ax.legend()
 
 
-def predicted_recerr_wrt_error(ax, errors, reconstruction_errors, actions, values, reward_scaling=600,
+def predicted_recerr_wrt_error(ax, errors, reconstruction_errors, actions, values, reward_scaling=1500,
         ylim=[0, 0.04], title=None, xlabel=None, ylabel=None, legend=False):
     # print("\n###")
     # print(np.concatenate([errors, values], axis=-1))
@@ -74,28 +74,35 @@ def predicted_recerr_wrt_error(ax, errors, reconstruction_errors, actions, value
         ax.legend()
 
 
-def action_wrt_error(ax, errors, actions, yscale, title=None, xlabel=None, ylabel=None, nbins=17, range=(-1.125, 1.125)):
+def action_wrt_error(ax, errors, actions, action_set, title=None, xlabel=None, ylabel=None):
+    n_actions = len(action_set) - 1
     histograms = []
     edges = []
+    action_set = np.array(action_set)
     for err, acts in zip(errors, actions):
-        hist, edg = np.histogram(acts, bins=nbins, density=True, range=range)
-        histograms.append(hist)
+        hist, edg = np.histogram(acts.flatten(), bins=action_set, density=False)
+        histograms.append(hist / np.sum(hist))
         edges.append(edg)
     image = np.zeros((len(hist), len(histograms)))
     for i, hist in enumerate(histograms):
         image[:, i] = hist
-    ax.imshow(image, origin="lower", extent=(errors[0], errors[-1], -yscale, yscale), aspect="auto")
+        ax.imshow(image, origin="lower", extent=(errors[0], errors[-1], -n_actions / 2, n_actions / 2), aspect="auto")
+    ax.axvline(0, color='k', linestyle='--')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     if ylabel is None:
         ax.set_yticks([])
+    else:
+        ax.set_yticks(ticks=np.linspace(-(n_actions - 1) / 2, (n_actions - 1) / 2, n_actions))
+        ax.set_yticklabels(labels=action_set[:-1])
 
 
-def action_wrt_error_individual(ax, errors, actions, yscale, title=None, xlabel=None, ylabel=None):
+def action_wrt_error_individual(ax, errors, actions, ylim=[-4.1, 4.1], title=None, xlabel=None, ylabel=None):
     for action in actions.squeeze().T:
         ax.plot(errors, action, color='k', alpha=0.15)
     ax.plot(errors, np.mean(actions.squeeze(), axis=-1), color='r')
+    ax.set_ylim(ylim)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -110,6 +117,7 @@ def data_wrt_episode_mean_std(ax, data, std=True, ylim=[-5, 5], title=None, xlab
     if std:
         std = np.std(data, axis=0)
         ax.fill_between(x, mean - std, mean + std, color='b', alpha=0.4)
+    ax.set_ylim(ylim)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
