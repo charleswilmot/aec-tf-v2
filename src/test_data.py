@@ -155,7 +155,7 @@ class TestDataContainer:
         IMPOSED_PAN_SPEED_ERROR = [0]
         IMPOSED_TILT_SPEED_ERROR = [0]
         IMPOSED_VERGENCE_ERROR = [0]
-        cyclo_pos = np.linspace(-cyclo_pos_bound_in_deg, cyclo_pos_bound_in_deg, n)
+        cyclo_pos = np.linspace(-cyclo_pos_bound_in_deg, cyclo_pos_bound_in_deg, n).astype(np.float32)
         self.add("wrt_cyclo_pos",
             stimulus=stimulus if stimulus is not None else self.default_stimulus,
             object_distance=object_distance if object_distance is not None else self.default_object_distance,
@@ -263,7 +263,7 @@ class TestDataContainer:
             data = self.data_by_name("wrt_cyclo_pos", dim0="conf.stimulus", sort_order="conf.cyclo_pos")
             plot.recerr_wrt_error(
                 ax,
-                data["result"]["cyclo_pos"] * DEG_TO_PX,
+                data["result"]["cyclo_pos"],
                 data["result"]["recerr_pavro"],
                 ylim=ylim,
                 xlabel="cyclo error (deg)",
@@ -365,8 +365,8 @@ class TestDataContainer:
             plot.action_wrt_error(
                 ax,
                 data["conf"]["cyclo_pos"][:, 0],
-                data["result"]["cyclo_action"],
-                [-1, 0, 1],
+                data["result"]["cyclo_action"] * DEG_TO_PX,
+                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
                 xlabel="cyclo pos (deg)",
             )
 
@@ -752,7 +752,7 @@ if __name__ == "__main__":
             pan_error=errors,
             tilt_error=errors,
             vergence_error=errors,
-            cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8),
+            cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
             n_iterations=20,
             name="default_at_{}m".format(distance)
         )
