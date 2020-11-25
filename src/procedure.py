@@ -86,6 +86,9 @@ class Procedure(object):
         self.batch_size = procedure_conf.batch_size
         self.n_simulations = simulation_conf.n
         self.reward_scaling = procedure_conf.reward_scaling
+        self.max_abs_cyclo_error = procedure_conf.max_abs_cyclo_error
+        self.vergence_min_distance_init = procedure_conf.vergence_min_distance_init
+        self.vergence_max_distance_init = procedure_conf.vergence_max_distance_init
         self.test_dump_path = "./tests/"
         self.test_plot_path = "./plots/"
         self.test_conf = TestDataContainer.load(procedure_conf.test_conf_path)
@@ -385,11 +388,21 @@ class Procedure(object):
             )
 
     def episode_reset_head(self, vergence=None, cyclo=None):
-        with self.simulation_pool.distribute_args():
-            self.simulation_pool.episode_reset_head(
-                [None] * self.simulation_pool.n if vergence is None else vergence,
-                [None] * self.simulation_pool.n if cyclo is None else cyclo,
+        if vergence is None:
+            distance = np.random.uniform(
+                low=self.vergence_min_distance_init,
+                high=self.vergence_max_distance_init,
+                size=self.simulation_pool.n
             )
+            vergence = distance_to_vergence(distance)
+        if cyclo is None:
+            cyclo = np.random.uniform(
+                low=-self.max_abs_cyclo_error,
+                high=self.max_abs_cyclo_error,
+                size=self.simulation_pool.n
+            )
+        with self.simulation_pool.distribute_args():
+            self.simulation_pool.episode_reset_head(vergence, cyclo)
 
     def get_vision(self, color_scaling=None):
         with self.simulation_pool.distribute_args():
