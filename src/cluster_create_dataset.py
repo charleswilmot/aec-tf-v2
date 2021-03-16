@@ -13,7 +13,7 @@ import custom_interpolations
 REMOTE_HOST_NAME = 'otto'
 
 
-@hydra.main(config_path='../config/algo/', config_name='config.yaml')
+@hydra.main(config_path='../config/scripts/', config_name='create_dataset.yaml')
 def start_job(cfg):
         experiment_path = os.getcwd()
         pickle_conf_path = experiment_path + '/cfg.json'
@@ -27,7 +27,7 @@ def start_job(cfg):
         partition_flag = "--partition {partition}".format(partition=partition)
         reservation_flag = "--reservation {reservation}".format(reservation=reservation) if reservation is not None else ""
         os.chdir(get_original_cwd())
-        command_line = "sbatch {output_flag} {job_name_flag} {partition_flag} {reservation_flag} cluster.sh ".format(
+        command_line = "sbatch {output_flag} {job_name_flag} {partition_flag} {reservation_flag} cluster_create_dataset.sh ".format(
             output_flag=output_flag,
             job_name_flag=job_name_flag,
             partition_flag=partition_flag,

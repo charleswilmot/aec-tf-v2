@@ -1,0 +1,22 @@
+dataset_path: ???
+other_conf_path: ???
+n_training_steps: 100000
+critic: True
+encoders: True
+critic_learning_rate: 16e-5
+encoder_learning_rate: 128e-5
+batch_size: 64
+
+hydra:
+  run:
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+    subdir: job${hydra.job.num}
+  job:
+    config:
+      # configuration for the ${hydra.job.override_dirname} runtime variable
+      override_dirname:
+        kv_sep: '.'
+        item_sep: '__'
+        exclude_keys: [dataset_path]

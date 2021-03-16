@@ -1,0 +1,10 @@
+path: ???
+n_episodes: 5000
+
+
+hydra:
+  run:
+    dir: ${path}/../../datasets
+  sweep:
+    dir: ${hydra.run.dir}
+    subdir: ""

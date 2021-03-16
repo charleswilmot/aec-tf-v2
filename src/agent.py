@@ -79,7 +79,7 @@ class Agent(object):
             for models_name, models in pathway_models.items():
                 if (encoder and models_name in ["encoder_models", "decoder_models"]) or (critic and models_name in ["critic_models"]):
                     for model_name, model in models.items():
-                        model.load_weights(path + "/{}_{}_{}".format(pathway_name, models_name, model_name))
+                        model.load_weights(path.rstrip('/') + "/{}_{}_{}".format(pathway_name, models_name, model_name))
 
     @tf.function
     def get_encodings(self, frame_by_scale, pathway_name):

@@ -91,6 +91,14 @@ class Procedure(object):
         self.vergence_max_distance_init = procedure_conf.vergence_max_distance_init
         self.test_dump_path = "./tests/"
         self.test_plot_path = "./plots/"
+        self.dataset_path = "./datasets"
+        self.replay_path = './replays'
+        # TREE STRUCTURE
+        os.makedirs(self.replay_path, exist_ok=True)
+        os.makedirs(self.dataset_path, exist_ok=True)
+        os.makedirs(self.test_dump_path, exist_ok=True)
+        os.makedirs(self.test_plot_path, exist_ok=True)
+        #
         self.test_conf = TestDataContainer.load(procedure_conf.test_conf_path)
         #    HPARAMS
         self._hparams = OrderedDict([
@@ -306,10 +314,6 @@ class Procedure(object):
         self.summary_writer = tf.summary.create_file_writer("logs")
         with self.summary_writer.as_default():
             hp.hparams(self._hparams)
-        # TREE STRUCTURE
-        os.makedirs('./replays', exist_ok=True)
-        os.makedirs(self.test_dump_path, exist_ok=True)
-        os.makedirs(self.test_plot_path, exist_ok=True)
 
     def log_metrics(self, key1, key2, step):
         with self.summary_writer.as_default():
@@ -318,7 +322,7 @@ class Procedure(object):
                 metric.reset_states()
 
     def log_summaries(self, exploration=True, evaluation=True, critic=True,
-            encoders=True):
+            encoders=True, wrt="exploration_episodes"):
         if exploration:
             self.log_metrics(
                 "collection",
@@ -336,15 +340,13 @@ class Procedure(object):
             self.log_metrics(
                 "training",
                 "critic",
-                self.n_exploration_episodes
-                # self.n_critic_training
+                self.n_exploration_episodes if wrt == "exploration_episodes" else self.n_critic_training
             )
         if encoders:
             self.log_metrics(
                 "training",
                 "encoders",
-                self.n_exploration_episodes
-                # self.n_encoder_training
+                self.n_exploration_episodes if wrt == "exploration_episodes" else self.n_encoder_training
             )
 
     def _get_current_training_ratio(self):
@@ -566,6 +568,73 @@ class Procedure(object):
         for name in video_names:
             os.remove(name)
 
+    def create_dataset(self, n_episodes):
+        """Performs one episode of exploration, places data in the buffer"""
+        n_episodes_done = 0
+        with open(self.dataset_path + "/dataset_episode_length_{}.dat".format(self.episode_length), "ab") as f:
+            while n_episodes_done < n_episodes:
+                n_episodes_done += self.n_simulations
+                print("{:06d} / {:06d}".format(n_episodes_done, n_episodes))
+                self.episode_reset_uniform_motion_screen(preinit=True)
+                self.episode_reset_head()
+                vision_after = self.get_vision()
+                self.simulation_pool.step_sim()
+                for iteration in range(self.episode_length):
+                    vision_before = vision_after
+                    vision_after = self.get_vision()
+                    pavro_vision = vision_after
+                    magno_vision = self.merge_before_after(vision_before, vision_after)
+                    data = self.agent(pavro_vision, magno_vision)
+                    noisy_actions = self.actions_indices_to_actions(
+                        data["tilt_noisy_actions_indices"].numpy(),
+                        data["pan_noisy_actions_indices"].numpy(),
+                        data["vergence_noisy_actions_indices"].numpy(),
+                        data["cyclo_noisy_actions_indices"].numpy(),
+                    )
+                    for scale_name in pavro_vision:
+                        self._train_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
+                        self._train_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
+                    self._train_data_buffer[:, iteration]["tilt_actions_indices"] = data["tilt_actions_indices"]
+                    self._train_data_buffer[:, iteration]["pan_actions_indices"] = data["pan_actions_indices"]
+                    self._train_data_buffer[:, iteration]["vergence_actions_indices"] = data["vergence_actions_indices"]
+                    self._train_data_buffer[:, iteration]["cyclo_actions_indices"] = data["cyclo_actions_indices"]
+                    self._train_data_buffer[:, iteration]["tilt_noisy_actions_indices"] = data["tilt_noisy_actions_indices"]
+                    self._train_data_buffer[:, iteration]["pan_noisy_actions_indices"] = data["pan_noisy_actions_indices"]
+                    self._train_data_buffer[:, iteration]["vergence_noisy_actions_indices"] = data["vergence_noisy_actions_indices"]
+                    self._train_data_buffer[:, iteration]["cyclo_noisy_actions_indices"] = data["cyclo_noisy_actions_indices"]
+                    # not necessary for training but useful for logging:
+                    self._train_data_buffer[:, iteration]["pavro_recerr"] = data["pavro_recerr"]
+                    self._train_data_buffer[:, iteration]["magno_recerr"] = data["magno_recerr"]
+                    self._train_data_buffer[:, iteration]["tilt_return_estimates"] = data["tilt_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["tilt_noisy_actions_indices"].numpy()
+                    ]
+                    self._train_data_buffer[:, iteration]["pan_return_estimates"] = data["pan_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["pan_noisy_actions_indices"].numpy()
+                    ]
+                    self._train_data_buffer[:, iteration]["vergence_return_estimates"] = data["vergence_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["vergence_noisy_actions_indices"].numpy()
+                    ]
+                    self._train_data_buffer[:, iteration]["cyclo_return_estimates"] = data["cyclo_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["cyclo_noisy_actions_indices"].numpy()
+                    ]
+                    self.apply_action(noisy_actions)
+                # COMPUTE TARGET
+                self._train_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
+                    self._train_data_buffer[:, :-1]["pavro_recerr"] -
+                    self._train_data_buffer[:,  1:]["pavro_recerr"]
+                )
+                self._train_data_buffer[:, :-1]["magno_critic_targets"] = self.reward_scaling * (
+                    self._train_data_buffer[:, :-1]["magno_recerr"] -
+                    self._train_data_buffer[:,  1:]["magno_recerr"]
+                )
+                f.write(self._train_data_buffer.tobytes())
+
+
+
     def collect_data(self):
         """Performs one episode of exploration, places data in the buffer"""
         time_start = time.time()
@@ -749,7 +818,7 @@ class Procedure(object):
             exploration=False,
         )
 
-    def test(self, test_conf_path=None, dump_path=None, plot_path=None):
+    def test(self, test_conf_path=None, dump_path=None, plot_path=None, name=None):
         if test_conf_path is None:
             test_conf = self.test_conf
         else:
@@ -833,7 +902,7 @@ class Procedure(object):
                         chunk["result"]["cyclo_action"][:, iteration] = actions[:, 3]
                         self.apply_action(actions)
         filepath = self.test_dump_path if dump_path is None else dump_path
-        name = "/{}_{:06d}".format(test_conf.name, self.n_exploration_episodes)
+        name = "/{}_{:06d}".format(test_conf.name, self.n_exploration_episodes) if name is None else name
         test_conf.dump(filepath, name=name)
         path = self.test_plot_path + "/" + name if plot_path is None else plot_path
         test_conf.plot(path)
@@ -989,6 +1058,56 @@ class Procedure(object):
                 tb["encoders"]["magno_loss"](losses["magno_encoders"])
                 self.n_encoder_training += 1
             return losses
+
+    def train_from_dataset(self, cfg):
+        dataset_path = cfg.dataset_path
+        n_training_steps = cfg.n_training_steps
+        critic = cfg.critic
+        encoders = cfg.encoders
+
+        with open(dataset_path, "rb") as f:
+            dataset = np.frombuffer(f.read(), dtype=self._train_data_type).flatten()
+
+        self.n_global_training += 1
+
+        self.agent.set_critic_learning_rate(cfg.critic_learning_rate)
+        self.agent.set_encoder_learning_rate(cfg.encoder_learning_rate)
+        batch_size = cfg.batch_size
+
+        for i in range(n_training_steps):
+            print("Training step {: 7d} / {: 7d}".format(i + 1, n_training_steps))
+            data = dataset[np.random.choice(dataset.shape[0], size=batch_size, replace=False)]
+            tb = self.tb["training"]
+            pavro_frame_by_scale = {
+                scale_name: data["pavro_vision"][scale_name]
+                for scale_name in self.scale_names
+            }
+            magno_frame_by_scale = {
+                scale_name: data["magno_vision"][scale_name]
+                for scale_name in self.scale_names
+            }
+            losses = self.agent.train(
+                pavro_frame_by_scale,
+                magno_frame_by_scale,
+                data["tilt_noisy_actions_indices"],
+                data["pan_noisy_actions_indices"],
+                data["vergence_noisy_actions_indices"],
+                data["cyclo_noisy_actions_indices"],
+                data["magno_critic_targets"],
+                data["pavro_critic_targets"],
+                encoders=encoders,
+                critic=critic)
+            if critic:
+                tb["critic"]["critic_tilt_loss"](losses["critic_tilt"])
+                tb["critic"]["critic_pan_loss"](losses["critic_pan"])
+                tb["critic"]["critic_vergence_loss"](losses["critic_vergence"])
+                tb["critic"]["critic_cyclo_loss"](losses["critic_cyclo"])
+                self.n_critic_training += 1
+            if encoders:
+                tb["encoders"]["pavro_loss"](losses["pavro_encoders"])
+                tb["encoders"]["magno_loss"](losses["magno_encoders"])
+                self.n_encoder_training += 1
+            self.log_summaries(exploration=False, evaluation=False, critic=critic, encoders=encoders, wrt='training')
 
     def collect_and_train(self, critic=True, encoders=True):
         self.collect_data()
