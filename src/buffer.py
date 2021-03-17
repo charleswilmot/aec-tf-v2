@@ -51,14 +51,19 @@ class Buffer(object):
 
     def sample(self, batch_size):
         if self.current_last < batch_size or batch_size > self.size:
-            return self.buffer[:self.current_last]
+            return np.arange(self.current_last), self.buffer[:self.current_last]
         batch_last = self.sample_index + batch_size
         if batch_last < self.current_last:
             ret = self.buffer[self.sample_index:batch_last]
+            indices = np.arange(self.sample_index, batch_last)
             self.sample_index = batch_last
-            return ret
+            return indices, ret
         else: # enough data in buffer but exceed its size
             part1 = self.buffer[self.sample_index:self.current_last]
             part2 = self.buffer[:batch_last - self.current_last]
+            indices_1 = np.arange(self.sample_index, self.current_last)
+            indices_2 = np.arange(batch_last - self.current_last)
+            indices = np.concatenate((indices_1, indices_2))
+            data = np.concatenate((part1, part2))
             self.sample_index = batch_last - self.current_last
-            return np.concatenate((part1, part2))
+            return indices, data

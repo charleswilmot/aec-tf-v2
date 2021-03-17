@@ -173,6 +173,8 @@ class Procedure(object):
         self._train_data_type = np.dtype([
             ("pavro_vision", pavro_dtype),
             ("magno_vision", magno_dtype),
+            ("pavro_vision_after", pavro_dtype),
+            ("magno_vision_after", magno_dtype),
             ("tilt_actions_indices", np.int32),
             ("pan_actions_indices", np.int32),
             ("vergence_actions_indices", np.int32),
@@ -685,6 +687,9 @@ class Procedure(object):
                 data["cyclo_noisy_actions_indices"].numpy()
             ]
             self.apply_action(noisy_actions)
+        for scale_name in pavro_vision:
+            self._train_data_buffer[:, :-1]["pavro_vision_after"][scale_name] = self._train_data_buffer[:, 1:]["pavro_vision"][scale_name]
+            self._train_data_buffer[:, :-1]["magno_vision_after"][scale_name] = self._train_data_buffer[:, 1:]["magno_vision"][scale_name]
         # COMPUTE TARGET
         self._train_data_buffer[:, :-1]["pavro_critic_targets"] = self.reward_scaling * (
             self._train_data_buffer[:, :-1]["pavro_recerr"] -
@@ -1026,7 +1031,7 @@ class Procedure(object):
                 break
 
         if self.buffer.enough(self.batch_size):
-            data = self.buffer.sample(self.batch_size)
+            indices, data = self.buffer.sample(self.batch_size)
             tb = self.tb["training"]
             pavro_frame_by_scale = {
                 scale_name: data["pavro_vision"][scale_name]
@@ -1034,6 +1039,14 @@ class Procedure(object):
             }
             magno_frame_by_scale = {
                 scale_name: data["magno_vision"][scale_name]
+                for scale_name in self.scale_names
+            }
+            pavro_frame_by_scale_after = {
+                scale_name: data["pavro_vision_after"][scale_name]
+                for scale_name in self.scale_names
+            }
+            magno_frame_by_scale_after = {
+                scale_name: data["magno_vision_after"][scale_name]
                 for scale_name in self.scale_names
             }
             losses = self.agent.train(
@@ -1057,6 +1070,14 @@ class Procedure(object):
                 tb["encoders"]["pavro_loss"](losses["pavro_encoders"])
                 tb["encoders"]["magno_loss"](losses["magno_encoders"])
                 self.n_encoder_training += 1
+            pavro_recerr = self.agent.get_encoder_loss(pavro_frame_by_scale, 'pavro')
+            magno_recerr = self.agent.get_encoder_loss(magno_frame_by_scale, 'magno')
+            pavro_recerr_after = self.agent.get_encoder_loss(pavro_frame_by_scale_after, 'pavro')
+            magno_recerr_after = self.agent.get_encoder_loss(magno_frame_by_scale_after, 'magno')
+            pavro_critic_targets = self.reward_scaling * (pavro_recerr - pavro_recerr_after)
+            magno_critic_targets = self.reward_scaling * (magno_recerr - magno_recerr_after)
+            self.buffer.buffer["pavro_critic_targets"][indices] = pavro_critic_targets
+            self.buffer.buffer["magno_critic_targets"][indices] = magno_critic_targets
             return losses
 
     def train_from_dataset(self, cfg):
