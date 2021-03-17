@@ -2,12 +2,13 @@ import hydra
 from omegaconf import OmegaConf
 from procedure import Procedure
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import custom_interpolations
 from test_data import TestDataContainer
 
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+tf.get_logger().setLevel('WARNING')
 
 
 @hydra.main(config_path='../config/algo/', config_name='config.yaml')
