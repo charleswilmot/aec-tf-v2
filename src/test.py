@@ -2,6 +2,7 @@ from procedure import Procedure
 from omegaconf import OmegaConf
 from pathlib import Path
 import hydra
+from hydra.utils import to_absolute_path
 import sys
 from test_data import TestDataContainer
 import custom_interpolations
@@ -9,7 +10,12 @@ import custom_interpolations
 
 def get_conf():
     cfg = OmegaConf.load('../.hydra/config.yaml')
-    return cfg
+    if 'agent' in cfg:
+        return cfg
+    elif 'other_conf_path' in cfg:
+        return OmegaConf.load(to_absolute_path(cfg.other_conf_path))
+    else:
+        raise ValueError("Could not find the configuration file to create a procedure object with")
 
 
 @hydra.main(config_path="../config/scripts/", config_name="test.yaml")
@@ -33,7 +39,7 @@ def test(cfg):
         print("[TEST] restoring from checkpoint")
         procedure.restore(relative_checkpoint_path)
         print("[TEST] start tests")
-        procedure.test(test_conf_path=cfg.test_conf_path + "/" + cfg.test_conf_name)
+        procedure.test(test_conf_path=cfg.test_conf_path + "/" + cfg.test_conf_name, name=cfg.name)
         print("[TEST] finished, exiting")
 
 if __name__ == '__main__':
