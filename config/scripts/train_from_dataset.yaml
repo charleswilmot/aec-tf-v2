@@ -1,22 +1,26 @@
 dataset_path: ???
 other_conf_path: ???
-n_training_steps: 100000
+name: ???
+dtype_path: null
+test_conf_path: null
+n_training_steps: 50000
 critic: True
 encoders: True
 critic_learning_rate: 16e-5
 encoder_learning_rate: 128e-5
 batch_size: 64
+restore_from: null
 
 hydra:
   run:
-    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}_train_from_${filename:${dataset_path}}_${hydra.job.override_dirname}
   sweep:
     dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}/
-    subdir: job${hydra.job.num}
+    subdir: train_from_${filename:${dataset_path}}_${hydra.job.override_dirname}
   job:
     config:
       # configuration for the ${hydra.job.override_dirname} runtime variable
       override_dirname:
         kv_sep: '.'
         item_sep: '__'
-        exclude_keys: [dataset_path]
+        exclude_keys: [dataset_path, dtype_path, other_conf_path, test_conf_path]

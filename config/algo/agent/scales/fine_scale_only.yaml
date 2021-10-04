@@ -1,0 +1,10 @@
+
+
+
+n_scales: 1
+
+description:
+  fine:
+    resolution: 32
+    view_angle: 9
+    downsampling: 3

@@ -1,10 +1,23 @@
-path: ???
+checkpoint_path: ???
+dataset_name: ???
 n_episodes: 5000
-
+n_samples: 10000
+vergence_disparity_std: 0
+speed_disparity_std: 0
+cyclo_disparity_std: 0
+controlled: True
+override_n_sim: 20
 
 hydra:
   run:
-    dir: ${path}/../../datasets
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}_${dataset_name}_${hydra.job.override_dirname}
   sweep:
-    dir: ${hydra.run.dir}
-    subdir: ""
+    dir: ../experiments/${now:%Y-%m-%d}/${now:%H-%M-%S}/
+    subdir: ${dataset_name}_${hydra.job.override_dirname}
+  job:
+    config:
+      # configuration for the ${hydra.job.override_dirname} runtime variable
+      override_dirname:
+        kv_sep: '.'
+        item_sep: '__'
+        exclude_keys: [checkpoint_path, dataset_name]

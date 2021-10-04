@@ -3,6 +3,7 @@ n_simulations: 6
 gui: False
 test_conf_path: ${hydra:runtime.cwd}/../config/test_conf/
 test_conf_name: default_at_2m.pkl
+name: null
 
 hydra:
   run:
