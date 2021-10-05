@@ -115,10 +115,10 @@ class Head(Shape):
         tilt, pan, vergence, cyclo = rad(tilt), rad(pan), rad(vergence), rad(cyclo)
         self.left_pan_joint.set_joint_position(pan + vergence / 2)
         self.left_tilt_joint.set_joint_position(tilt)
-        self.left_cyclo_joint.set_joint_position(-cyclo)
+        self.left_cyclo_joint.set_joint_position(-cyclo / 2)
         self.right_pan_joint.set_joint_position(pan - vergence / 2)
         self.right_tilt_joint.set_joint_position(tilt)
-        self.right_cyclo_joint.set_joint_position(cyclo)
+        self.right_cyclo_joint.set_joint_position(cyclo / 2)
 
     def set_joints_velocities(self, tilt, pan, vergence, cyclo):
         self._tilt_position += tilt
@@ -132,10 +132,10 @@ class Head(Shape):
         tilt, pan, vergence, cyclo = rad(self._tilt_position), rad(self._pan_position), rad(self._vergence_position), rad(self._cyclo_position)
         self.left_pan_joint.set_joint_position(pan + vergence / 2)
         self.left_tilt_joint.set_joint_position(tilt)
-        self.left_cyclo_joint.set_joint_position(-cyclo)
+        self.left_cyclo_joint.set_joint_position(-cyclo / 2)
         self.right_pan_joint.set_joint_position(pan - vergence / 2)
         self.right_tilt_joint.set_joint_position(tilt)
-        self.right_cyclo_joint.set_joint_position(cyclo)
+        self.right_cyclo_joint.set_joint_position(cyclo / 2)
 
     def set_action(self, tilt_acceleration, pan_acceleration, vergence_velocity, cyclo_velocity):
         self._tilt_acceleration = tilt_acceleration
