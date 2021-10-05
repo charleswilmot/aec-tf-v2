@@ -479,6 +479,7 @@ class Procedure(object):
         self.simulation_pool.add_scale("record", resolution, 90.0, 1)
         n_episodes_done = 0
         while n_episodes_done < n_episodes:
+            print(f'{n_episodes_done + 1} / {n_episodes}')
             n_episodes_done += self.n_simulations
             self.episode_reset_uniform_motion_screen(preinit=True)
             self.episode_reset_head()
@@ -487,7 +488,7 @@ class Procedure(object):
             self.apply_action(np.zeros((self.n_simulations, 4)))
             prev_pavro_recerr = np.zeros(self.n_simulations)
             prev_magno_recerr = np.zeros(self.n_simulations)
-            for iteration in range(30):
+            for iteration in range(self.episode_length):
                 vision_before = vision_after
                 vision_after = self.get_vision()
                 left_rights = vision_after.pop("record")
@@ -518,7 +519,7 @@ class Procedure(object):
                     ana = anaglyph(left_right)
                     text_0 = text_frame(height=resolution[1], width=resolution[1],
                         line_0 =("episode", "{: 2d}".format(i * ((n_episodes + self.n_simulations - 1) // self.n_simulations) + n_episodes_done // self.n_simulations)),
-                        line_1 =("iteration", "{: 2d}/{: 2d}".format(iteration + 1, 30)),
+                        line_1 =("iteration", "{: 2d}/{: 2d}".format(iteration + 1, self.episode_length)),
                         line_2 =("tilt error", "{:.2f}".format(tilt_error[i])),
                         line_3 =("pan error", "{:.2f}".format(pan_error[i])),
                         line_4 =("vergence error", "{:.2f}".format(vergence_error[i])),
@@ -552,6 +553,9 @@ class Procedure(object):
                     # frame = np.concatenate([text_0, text_1, ana, top_bottom], axis=1)
                     frame = np.concatenate([text_0, text_1, ana], axis=1)
                     writer.append_data(frame)
+                    if iteration == self.episode_length - 1:
+                        for i in range(10):
+                            writer.append_data(frame)
                 prev_pavro_recerr = pavro_recerr
                 prev_magno_recerr = magno_recerr
         self.simulation_pool.delete_scale("record")
@@ -560,7 +564,7 @@ class Procedure(object):
         with open("file_list.txt", "w") as f:
             for name in video_names:
                 f.write("file '{}'\n".format(name))
-        os.system("ffmpeg -hide_banner -loglevel panic -f concat -safe 0 -i file_list.txt -c copy {}.mp4".format(video_name))
+        os.system("ffmpeg -hide_banner -loglevel panic -f concat -i file_list.txt -c copy {}.mp4".format(video_name))
         # os.remove("file_list.txt")
         for name in video_names:
             os.remove(name)
