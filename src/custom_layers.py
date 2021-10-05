@@ -109,7 +109,7 @@ class PolicyPerScaleConv2D(keras.layers.Layer):
             strides=pool_strides,
             padding=pool_padding,
         ) for i in range(n_scales)]
-        self.concat = keras.layers.Concatenate()
+        self.concat = keras.layers.Concatenate() if n_scales > 1 else lambda x: x[0]
 
     def call(self, encodings_by_scale):
         visions = [

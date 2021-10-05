@@ -1,5 +1,6 @@
 import os
 from paramiko import SSHClient, RSAKey, AutoAddPolicy
+from getpass import getpass
 
 
 def get_n_free_cpus(node):
@@ -34,17 +35,17 @@ def node_list_availability(node_list, min_cpus=8, min_free_mem=20000):
 
 
 def get_partition_reservation():
-    # OPTION 1
-    print("checking OPTION 1 ... ", end="")
-    if node_list_availability(["turbine", "vane"]):
-        print("free space available, sending job")
-        return "sleuths", None
-    print("no free space")
     # OPTION 2
     print("checking OPTION 2 ... ", end="")
-    if node_list_availability(["jetski", "speedboat"]):
+    if node_list_availability(["jetski"]): # , "speedboat"
         print("free space available, sending job")
         return "sleuths", "triesch-shared"
+    print("no free space")
+    # OPTION 1
+    print("checking OPTION 1 ... ", end="")
+    if node_list_availability(["turbine"]): # , "vane"
+        print("free space available, sending job")
+        return "sleuths", None
     print("no free space")
     print("No space available on the cluster. Defaulting to turbine/vane OPTION 1")
     return "sleuths", None
@@ -66,7 +67,7 @@ def ssh_command(cmd):
     client.connect(host, username=user, password=PASSWORD)
     stdin, stdout, stderr = client.exec_command("""(
         eval "$(/home/wilmot/.software/miniconda/miniconda3/bin/conda shell.bash hook)" ;
-        export COPPELIASIM_ROOT=/home/aecgroup/aecdata/Software/CoppeliaSim_4.0.0_rev4 ;
+        export COPPELIASIM_ROOT=/home/aecgroup/aecdata/Software/CoppeliaSim_Edu_V4_2_0_Ubuntu16_04 ;
         export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$COPPELIASIM_ROOT ;
         export QT_QPA_PLATFORM_PLUGIN_PATH=$COPPELIASIM_ROOT ;
         export COPPELIASIM_MODEL_PATH=/home/wilmot/Documents/code/aec-tf-v2/models/ ;

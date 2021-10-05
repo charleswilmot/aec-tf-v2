@@ -12,7 +12,7 @@ def get_conf():
     return cfg
 
 
-@hydra.main(config_path="../config/scripts/", config_name="replay.yaml", strict=True)
+@hydra.main(config_path="../config/scripts/", config_name="replay.yaml")
 def main(cfg):
     replay(cfg)
 
@@ -23,7 +23,7 @@ def replay(cfg):
     buffer_conf = experiment_cfg.buffer
     simulation_conf = experiment_cfg.simulation
     procedure_conf = experiment_cfg.procedure
-    simulation_conf.n = 4
+    # simulation_conf.n = 4
     if cfg.gui:
         simulation_conf.guis = [0]
 

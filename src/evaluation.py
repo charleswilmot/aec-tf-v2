@@ -84,7 +84,7 @@ def get_evaluation_conf(n,
     n_plus, factors = find_max_number_of_factors(n, n + 10)
     offset = 10
     while not above_minimum_factors(factors, minimum_factors):
-        print(offset)
+        # print(offset)
         n_plus, factors = find_max_number_of_factors(n + offset, n + offset + 10)
         offset += 10
     # print(n_plus)
