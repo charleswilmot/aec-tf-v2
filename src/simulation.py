@@ -138,7 +138,7 @@ class SimulationConsumerAbstract(mp.Process):
         self._pyrep.launch(
             self._scene,
             headless=not self._gui,
-            write_coppeliasim_stdout_to_file=True
+            # write_coppeliasim_stdout_to_file=True
         )
         self._process_io["simulaton_ready"].set()
         self._main_loop()
@@ -308,29 +308,17 @@ class SimulationConsumer(SimulationConsumerAbstract):
         self._cams.pop(cam_id)
 
     @communicate_return_value
-    def get_vision(self, color_scaling=None):
-        if color_scaling is None:
-            return {
-                scale_id: resize(
-                    np.concatenate([
-                        self._cams[left].capture_rgb(),
-                        self._cams[right].capture_rgb()
-                        ], axis=-1) * 2 - 1,
-                    self.scales_resolutions[scale_id],
-                    anti_aliasing=True)
-                for scale_id, (left, right) in self.scales.items()
-            }
-        else:
-            return {
-                scale_id: resize(
-                    np.concatenate([
-                        self._cams[left].capture_rgb(),
-                        self._cams[right].capture_rgb()
-                        ], axis=-1) * color_scaling[scale_id] * 2 - 1,
-                    self.scales_resolutions[scale_id],
-                    anti_aliasing=True)
-                for scale_id, (left, right) in self.scales.items()
-            }
+    def get_vision(self):
+        return {
+            scale_id: resize(
+                np.concatenate([
+                    self._cams[left].capture_rgb(),
+                    self._cams[right].capture_rgb()
+                    ], axis=-1) * 2 - 1,
+                self.scales_resolutions[scale_id],
+                anti_aliasing=True)
+            for scale_id, (left, right) in self.scales.items()
+        }
 
     @communicate_return_value
     def add_scale(self, id, resolution, view_angle, downsampling):
@@ -994,4 +982,29 @@ if __name__ == '__main__':
         ax13.set_title("DS3 coarse scale right")
         plt.show()
 
-    test_new_cams()
+    def debug_color_bug():
+        simulations = SimulationPool(size=5)
+        simulations.add_background("ny_times_square")
+        simulations.add_head()
+        simulations.add_scale("only", (320, 320), 9.0, 3)
+        screen = simulations.add_uniform_motion_screen("/home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/", size=1.5)
+        simulations.start_sim()
+        simulations.step_sim()
+        simulations.episode_reset_head(vergence=0, cyclo=0)
+
+        for i in range(20):
+            simulations.episode_reset_uniform_motion_screen(
+                start_distance=2,
+                depth_speed=0,
+                angular_speed=0,
+                direction=0,
+                texture_id=i,
+                preinit=False,
+            )
+            simulations.step_sim()
+            visions = simulations.get_vision() # block
+            means = np.array([np.mean(vision["only"]) for vision in visions])
+            print(i, (means - means[0] < 1e-4).all(), means)
+
+    # test_new_cams()
+    debug_color_bug()

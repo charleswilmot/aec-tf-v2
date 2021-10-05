@@ -14,6 +14,7 @@ from PIL import ImageFont
 from PIL import ImageDraw
 from test_data import TestDataContainer
 from evaluation import get_evaluation_conf
+from hydra.utils import get_original_cwd, to_absolute_path
 
 
 critic_test_dtype = np.dtype([
@@ -135,7 +136,6 @@ class Procedure(object):
         )
         self.simulation_pool.start_sim()
         self.simulation_pool.step_sim()
-        self.color_scaling = self.get_color_scaling()
         print("[procedure] all simulation started")
 
         fake_frame_by_scale_pavro = self.get_vision()
@@ -167,8 +167,6 @@ class Procedure(object):
             (scale, np.float32, (scale_conf.resolution, scale_conf.resolution, 12))
             for scale, scale_conf in agent_conf.scales.description.items()
         ])
-        n_pavro_joints = 2
-        n_magno_joints = 2
 
         self._train_data_type = np.dtype([
             ("pavro_vision", pavro_dtype),
@@ -369,10 +367,11 @@ class Procedure(object):
     def close(self):
         self.simulation_pool.close()
 
-    def save(self):
+    def save(self, name=None):
         """Saves the model in the appropriate directory"""
-        path = "./checkpoints/{:08d}".format(self.n_global_training)
+        path = "./checkpoints/{:08d}".format(self.n_global_training) if name is None else "./checkpoints/" + name
         self.agent.save_weights(path)
+        return path
 
     def restore(self, path, encoder=True, critic=True):
         """Restores the weights from a checkpoint"""
@@ -408,9 +407,9 @@ class Procedure(object):
         with self.simulation_pool.distribute_args():
             self.simulation_pool.episode_reset_head(vergence, cyclo)
 
-    def get_vision(self, color_scaling=None):
+    def get_vision(self):
         with self.simulation_pool.distribute_args():
-            vision_list = self.simulation_pool.get_vision(color_scaling=self.color_scaling if color_scaling is None else color_scaling)
+            vision_list = self.simulation_pool.get_vision()
         return {
             scale_name: np.stack([v[scale_name] for v in vision_list], axis=0)
             for scale_name in vision_list[0]
@@ -424,7 +423,7 @@ class Procedure(object):
             ) for scale_name in before
         }
 
-    def get_color_scaling(self):
+    def get_color_means(self):
         self.simulation_pool.episode_reset_head(vergence=0, cyclo=0)
         data = []
         for texture_id in range(20):
@@ -449,10 +448,7 @@ class Procedure(object):
             ], axis=0)
             for scale_id in vision_list[0]
         } for sim_id in range(self.n_simulations)]
-        return [{
-            scale_id: color_means[0][scale_id] / scale_mean
-            for scale_id, scale_mean in simulation_color_means.items()
-        } for simulation_color_means in color_means]
+        return color_means
 
     def apply_action(self, actions):
         with self.simulation_pool.distribute_args():
@@ -481,20 +477,19 @@ class Procedure(object):
         video_names = [video_name + "_{:02d}.mp4".format(i) for i in range(self.n_simulations)]
         writers = [get_writer(name, fps=25) for name in video_names]
         self.simulation_pool.add_scale("record", resolution, 90.0, 1)
-        color_scaling = self.get_color_scaling()
         n_episodes_done = 0
         while n_episodes_done < n_episodes:
             n_episodes_done += self.n_simulations
             self.episode_reset_uniform_motion_screen(preinit=True)
             self.episode_reset_head()
-            vision_after = self.get_vision(color_scaling=color_scaling) # preinit frames
+            vision_after = self.get_vision() # preinit frames
             left_rights = vision_after.pop("record")
             self.apply_action(np.zeros((self.n_simulations, 4)))
             prev_pavro_recerr = np.zeros(self.n_simulations)
             prev_magno_recerr = np.zeros(self.n_simulations)
             for iteration in range(30):
                 vision_before = vision_after
-                vision_after = self.get_vision(color_scaling=color_scaling)
+                vision_after = self.get_vision()
                 left_rights = vision_after.pop("record")
                 pavro_vision = vision_after
                 magno_vision = self.merge_before_after(vision_before, vision_after)
@@ -570,10 +565,9 @@ class Procedure(object):
         for name in video_names:
             os.remove(name)
 
-    def create_dataset(self, n_episodes):
-        """Performs one episode of exploration, places data in the buffer"""
+    def create_dataset(self, name, n_episodes):
         n_episodes_done = 0
-        with open(self.dataset_path + "/dataset_episode_length_{}.dat".format(self.episode_length), "ab") as f:
+        with open(get_original_cwd() + "/../datasets/{}.dat".format(name), "ab") as f:
             while n_episodes_done < n_episodes:
                 n_episodes_done += self.n_simulations
                 print("{:06d} / {:06d}".format(n_episodes_done, n_episodes))
@@ -635,7 +629,96 @@ class Procedure(object):
                 )
                 f.write(self._train_data_buffer.tobytes())
 
-
+    def create_controlled_dataset(self, name, n_samples, vergence_disparity_std, speed_disparity_std, cyclo_disparity_std):
+        n_samples_done = 0
+        with open(get_original_cwd() + "/../datasets/{}_vergence_{}_speed_{}_cyclo_{}.dat".format(name, vergence_disparity_std, speed_disparity_std, cyclo_disparity_std), "ab") as f:
+            while n_samples_done < n_samples:
+                n_samples_done += self.n_simulations
+                print("{:06d} / {:06d}".format(n_samples_done, n_samples))
+                if speed_disparity_std == 0:
+                    angular_speeds = np.zeros(self.n_simulations)
+                else:
+                    angular_speeds = np.random.normal(
+                        size=self.n_simulations,
+                        scale=speed_disparity_std * 90 / 320
+                    )
+                start_distances = np.random.uniform(
+                    size=self.n_simulations,
+                    low=self.vergence_min_distance_init,
+                    high=self.vergence_max_distance_init
+                )
+                if vergence_disparity_std == 0:
+                    vergence_errors = np.zeros(self.n_simulations)
+                else:
+                    vergence_errors = np.random.normal(
+                        size=self.n_simulations,
+                        scale=vergence_disparity_std * 90 / 320
+                    )
+                if cyclo_disparity_std == 0:
+                    cyclo = np.zeros(self.n_simulations)
+                else:
+                    cyclo = np.random.normal(
+                        size=self.n_simulations,
+                        scale=cyclo_disparity_std,
+                    )
+                vergence = distance_to_vergence(start_distances) - vergence_errors
+                self.episode_reset_uniform_motion_screen(angular_speeds=angular_speeds, start_distances=start_distances)
+                self.episode_reset_head(vergence=vergence, cyclo=cyclo)
+                vision_after = self.get_vision()
+                self.simulation_pool.step_sim()
+                for iteration in range(2):
+                    vision_before = vision_after
+                    vision_after = self.get_vision()
+                    pavro_vision = vision_after
+                    magno_vision = self.merge_before_after(vision_before, vision_after)
+                    data = self.agent(pavro_vision, magno_vision)
+                    noisy_actions = self.actions_indices_to_actions(
+                        data["tilt_noisy_actions_indices"].numpy(),
+                        data["pan_noisy_actions_indices"].numpy(),
+                        data["vergence_noisy_actions_indices"].numpy(),
+                        data["cyclo_noisy_actions_indices"].numpy(),
+                    )
+                    for scale_name in pavro_vision:
+                        self._train_data_buffer[:, iteration]["pavro_vision"][scale_name] = pavro_vision[scale_name]
+                        self._train_data_buffer[:, iteration]["magno_vision"][scale_name] = magno_vision[scale_name]
+                    self._train_data_buffer[:, iteration]["tilt_actions_indices"] = data["tilt_actions_indices"]
+                    self._train_data_buffer[:, iteration]["pan_actions_indices"] = data["pan_actions_indices"]
+                    self._train_data_buffer[:, iteration]["vergence_actions_indices"] = data["vergence_actions_indices"]
+                    self._train_data_buffer[:, iteration]["cyclo_actions_indices"] = data["cyclo_actions_indices"]
+                    self._train_data_buffer[:, iteration]["tilt_noisy_actions_indices"] = data["tilt_noisy_actions_indices"]
+                    self._train_data_buffer[:, iteration]["pan_noisy_actions_indices"] = data["pan_noisy_actions_indices"]
+                    self._train_data_buffer[:, iteration]["vergence_noisy_actions_indices"] = data["vergence_noisy_actions_indices"]
+                    self._train_data_buffer[:, iteration]["cyclo_noisy_actions_indices"] = data["cyclo_noisy_actions_indices"]
+                    # not necessary for training but useful for logging:
+                    self._train_data_buffer[:, iteration]["pavro_recerr"] = data["pavro_recerr"]
+                    self._train_data_buffer[:, iteration]["magno_recerr"] = data["magno_recerr"]
+                    self._train_data_buffer[:, iteration]["tilt_return_estimates"] = data["tilt_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["tilt_noisy_actions_indices"].numpy()
+                    ]
+                    self._train_data_buffer[:, iteration]["pan_return_estimates"] = data["pan_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["pan_noisy_actions_indices"].numpy()
+                    ]
+                    self._train_data_buffer[:, iteration]["vergence_return_estimates"] = data["vergence_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["vergence_noisy_actions_indices"].numpy()
+                    ]
+                    self._train_data_buffer[:, iteration]["cyclo_return_estimates"] = data["cyclo_return_estimates"].numpy()[
+                        np.arange(self.n_simulations),
+                        data["cyclo_noisy_actions_indices"].numpy()
+                    ]
+                    self.apply_action(np.zeros_like(noisy_actions))
+                # COMPUTE TARGET
+                self._train_data_buffer[:, 0]["pavro_critic_targets"] = self.reward_scaling * (
+                    self._train_data_buffer[:, 0]["pavro_recerr"] -
+                    self._train_data_buffer[:, 1]["pavro_recerr"]
+                )
+                self._train_data_buffer[:, 0]["magno_critic_targets"] = self.reward_scaling * (
+                    self._train_data_buffer[:, 0]["magno_recerr"] -
+                    self._train_data_buffer[:, 1]["magno_recerr"]
+                )
+                f.write(self._train_data_buffer[:, 0].tobytes())
 
     def collect_data(self):
         """Performs one episode of exploration, places data in the buffer"""
@@ -1081,13 +1164,23 @@ class Procedure(object):
             return losses
 
     def train_from_dataset(self, cfg):
-        dataset_path = cfg.dataset_path
+        dataset_path = to_absolute_path(cfg.dataset_path)
+        dtype_path = None if cfg.dtype_path is None else to_absolute_path(cfg.dtype_path)
         n_training_steps = cfg.n_training_steps
         critic = cfg.critic
         encoders = cfg.encoders
 
+        if dtype_path is not None:
+            import pickle
+            with open(dtype_path, 'rb') as f:
+                dtype = pickle.load(f)
+            print("[procedure] dataset type loaded from path ({})".format(cfg.dtype_path))
+        else:
+            dtype = self._train_data_type
+            print("[procedure] default dataset type")
+
         with open(dataset_path, "rb") as f:
-            dataset = np.frombuffer(f.read(), dtype=self._train_data_type).flatten()
+            dataset = np.frombuffer(f.read(), dtype=dtype).flatten()
 
         self.n_global_training += 1
 
