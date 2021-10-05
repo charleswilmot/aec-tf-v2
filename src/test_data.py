@@ -335,7 +335,7 @@ class TestDataContainer:
                 ax,
                 data["conf"]["pan_error"][:, 0] * DEG_TO_PX,
                 data["result"]["pan_action"] * DEG_TO_PX,
-                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
+                np.array([-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999], dtype=np.float32),
                 xlabel="pan error (px/it)",
                 ylabel="action\n(in px/it² for pan and tilt, in px/it for vergence, in deg/it for cyclo)"
             )
@@ -346,7 +346,7 @@ class TestDataContainer:
                 ax,
                 data["conf"]["tilt_error"][:, 0] * DEG_TO_PX,
                 data["result"]["tilt_action"] * DEG_TO_PX,
-                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
+                np.array([-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999], dtype=np.float32),
                 xlabel="tilt error (px/it)",
             )
 
@@ -356,18 +356,21 @@ class TestDataContainer:
                 ax,
                 data["conf"]["vergence_error"][:, 0] * DEG_TO_PX,
                 data["result"]["vergence_action"] * DEG_TO_PX,
-                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
+                np.array([-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999], dtype=np.float32),
                 xlabel="vergence error (px)",
             )
 
             ax = fig.add_subplot(144)
+            ax.yaxis.tick_right()
             data = self.data_by_name("wrt_cyclo_pos", dim0="conf.cyclo_pos")
             plot.action_wrt_error(
                 ax,
                 data["conf"]["cyclo_pos"][:, 0],
-                data["result"]["cyclo_action"] * DEG_TO_PX,
-                [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
+                -data["result"]["cyclo_action"], # * DEG_TO_PX,
+                np.array([-3.58, -1.79, 0.0, 1.79, 3.58, 999], dtype=np.float32),
+                # [-4, -2, -1, -0.5, 0, 0.5, 1, 2, 4, 999],
                 xlabel="cyclo pos (deg)",
+                ylabel='',
             )
 
     def plot_action_wrt_error_individual(self, path, save=True):
@@ -407,7 +410,7 @@ class TestDataContainer:
             plot.action_wrt_error_individual(
                 ax,
                 data["conf"]["cyclo_pos"][:, 0],
-                data["result"]["cyclo_action"],
+                -data["result"]["cyclo_action"],
                 xlabel="cyclo pos (deg)",
             )
 
@@ -476,6 +479,7 @@ class TestDataContainer:
             )
             ax.axhline(1, color="k", linestyle="--", alpha=0.5)
             ax.axhline(-1, color="k", linestyle="--", alpha=0.5)
+            ax.legend(prop={'size': 5})
 
             ax = fig.add_subplot(142)
             data = self.data_by_name("tilt_speed_trajectory")
@@ -506,8 +510,8 @@ class TestDataContainer:
             errors = data["conf"]["cyclo_pos"]
             plot.data_wrt_episode_std_quantile(
                 ax,
-                data["result"]["cyclo_pos"] * DEG_TO_PX,
-                ylim=ylim,
+                data["result"]["cyclo_pos"],
+                ylim=[-6, 6],
                 xlabel="#Iteration (cyclo)",
             )
 
@@ -701,6 +705,26 @@ class TestDataContainer:
         self.plot_critic_wrt_delta_error(path, save=save)
         self.plot_critic_wrt_reward(path, save=save)
 
+    def get_performance(self, percentiles):
+        tmp = {
+            'vergence_trajectory': 'vergence_error',
+            'cyclo_trajectory': 'cyclo_pos',
+            'pan_speed_trajectory': 'pan_error',
+            'tilt_speed_trajectory': 'tilt_error',
+        }
+        data = {
+            value: np.abs(self.data_by_name(key)['result'][value][:, 9])
+            for key, value in tmp.items()
+        }
+        return {
+            key: tuple(
+                np.percentile(value, q)
+                for q in percentiles
+            )
+            for key, value in data.items()
+        }
+
+
 def test_case(stimulus, object_distance, vergence_error, cyclo_pos, pan_error, tilt_error, n_iterations):
     return np.array((
         int(stimulus),
@@ -745,23 +769,83 @@ if __name__ == "__main__":
     errors = [90 / 320 * i for i in [-0.5, -1, -1.5, -2, -2.5, -3, -3.5, -4, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]]
     bound_in_px = 8
     cyclo_bound_in_deg = 5
-    for distance in [2, 4, 6]:
-        test_conf = TestDataContainer(
-            stimulus=range(20),
-            object_distance=[distance],
-            pan_error=errors,
-            tilt_error=errors,
-            vergence_error=errors,
-            cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
-            n_iterations=20,
-            name="default_at_{}m".format(distance)
-        )
-        test_conf.add_vergence_trajectory()
-        test_conf.add_cyclo_trajectory()
-        test_conf.add_speed_trajectory("tilt")
-        test_conf.add_speed_trajectory("pan")
-        test_conf.add_wrt_vergence_error(bound_in_px)
-        test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
-        test_conf.add_wrt_speed_error("tilt", bound_in_px)
-        test_conf.add_wrt_speed_error("pan", bound_in_px)
-        test_conf.dump("../config/test_conf/")
+    # for distance in [2, 4, 6]:
+    #     test_conf = TestDataContainer(
+    #         stimulus=range(20),
+    #         object_distance=[distance],
+    #         pan_error=errors,
+    #         tilt_error=errors,
+    #         vergence_error=errors,
+    #         cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
+    #         n_iterations=20,
+    #         name="default_at_{}m".format(distance)
+    #     )
+    #     test_conf.add_vergence_trajectory()
+    #     test_conf.add_cyclo_trajectory()
+    #     test_conf.add_speed_trajectory("tilt")
+    #     test_conf.add_speed_trajectory("pan")
+    #     test_conf.add_wrt_vergence_error(bound_in_px)
+    #     test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
+    #     test_conf.add_wrt_speed_error("tilt", bound_in_px)
+    #     test_conf.add_wrt_speed_error("pan", bound_in_px)
+    #     test_conf.dump("../config/test_conf/")
+
+    bound_in_px = 24
+    cyclo_bound_in_deg = 15
+    distance = 2
+
+    test_conf = TestDataContainer(
+        stimulus=range(20),
+        object_distance=[distance],
+        pan_error=errors,
+        tilt_error=errors,
+        vergence_error=errors,
+        cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
+        n_iterations=20,
+        name="wrt_each_joint_at_2m_wide_error_range"
+    )
+    test_conf.add_wrt_speed_error("pan", bound_in_px)
+    test_conf.add_wrt_speed_error("tilt", bound_in_px)
+    test_conf.add_wrt_vergence_error(bound_in_px)
+    test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
+    test_conf.dump("../config/test_conf/")
+
+    test_conf = TestDataContainer(
+        stimulus=range(20),
+        object_distance=[distance],
+        pan_error=errors,
+        tilt_error=errors,
+        vergence_error=errors,
+        cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
+        n_iterations=20,
+        name="wrt_pan_tilt_error_only_at_2m_wide_error_range"
+    )
+    test_conf.add_wrt_speed_error("pan", bound_in_px)
+    test_conf.add_wrt_speed_error("tilt", bound_in_px)
+    test_conf.dump("../config/test_conf/")
+
+    test_conf = TestDataContainer(
+        stimulus=range(20),
+        object_distance=[distance],
+        pan_error=errors,
+        tilt_error=errors,
+        vergence_error=errors,
+        cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
+        n_iterations=20,
+        name="wrt_vergence_error_only_at_2m_wide_error_range"
+    )
+    test_conf.add_wrt_vergence_error(bound_in_px)
+    test_conf.dump("../config/test_conf/")
+
+    test_conf = TestDataContainer(
+        stimulus=range(20),
+        object_distance=[distance],
+        pan_error=errors,
+        tilt_error=errors,
+        vergence_error=errors,
+        cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
+        n_iterations=20,
+        name="wrt_cyclo_error_only_at_2m_wide_error_range"
+    )
+    test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
+    test_conf.dump("../config/test_conf/")

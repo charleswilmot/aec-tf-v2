@@ -125,19 +125,54 @@ def data_wrt_episode_mean_std(ax, data, std=True, ylim=[-5, 5], title=None, xlab
         ax.set_yticks([])
 
 
+# def data_wrt_episode_std_quantile(ax, data, ylim=None, title=None, xlabel=None, ylabel=None):
+#     x = np.arange(data.shape[-1])
+#     mean = np.mean(data, axis=0)
+#     std = np.std(data, axis=0)
+#     q10 = np.quantile(data, 0.10, axis=0)
+#     q25 = np.quantile(data, 0.25, axis=0)
+#     q75 = np.quantile(data, 0.75, axis=0)
+#     q90 = np.quantile(data, 0.90, axis=0)
+#     ax.fill_between(x, q10, q90, color='b', alpha=0.25)
+#     ax.fill_between(x, q25, q75, color='b', alpha=0.25)
+#     ax.fill_between(x, mean - std, mean + std, color='r', alpha=0.25)
+#     # for y in data:
+#     #     ax.plot(x, y, color='k', alpha=0.01)
+#     ax.set_xlabel(xlabel)
+#     ax.set_ylabel(ylabel)
+#     ax.set_title(title)
+#     ax.set_ylim(ylim)
+#     if ylim is None:
+#         ax.set_yticks([])
+
+
 def data_wrt_episode_std_quantile(ax, data, ylim=None, title=None, xlabel=None, ylabel=None):
     x = np.arange(data.shape[-1])
-    mean = np.mean(data, axis=0)
+    mean = np.mean(np.abs(data), axis=0)
     std = np.std(data, axis=0)
-    q10 = np.quantile(data, 0.10, axis=0)
-    q25 = np.quantile(data, 0.25, axis=0)
-    q75 = np.quantile(data, 0.75, axis=0)
-    q90 = np.quantile(data, 0.90, axis=0)
-    ax.fill_between(x, q10, q90, color='b', alpha=0.25)
-    ax.fill_between(x, q25, q75, color='b', alpha=0.25)
-    ax.fill_between(x, mean - std, mean + std, color='r', alpha=0.25)
-    # for y in data:
-    #     ax.plot(x, y, color='k', alpha=0.01)
+    percentiles = np.arange(5, 100, 5)
+    quantiles = [np.quantile(data, p / 100, axis=0) for p in percentiles]
+    n_regions = len(percentiles) - 1
+    n_colors = n_regions // 2
+    color_A = np.array((150, 246, 255)) / 255
+    color_B = np.array((  5,   0, 107)) / 255
+    for i, (ymini, ymaxi) in enumerate(zip(quantiles, quantiles[1:])):
+        color_interpolation = np.abs(i - (n_regions - 1) / 2) * 2 / (n_regions - 1)
+        color = color_A * color_interpolation + color_B * (1 - color_interpolation)
+        if i >= n_colors:
+            label = None
+        elif i == n_colors - 1:
+            label = f'[{percentiles[i]},{percentiles[n_regions - i]}]'
+        else:
+            label = f'[{percentiles[i]},{percentiles[i+1]}],[{percentiles[n_regions - i - 1]},{percentiles[n_regions - i]}]'
+        ax.fill_between(
+            x,
+            np.array(ymini),
+            np.array(ymaxi),
+            color=color,
+            label=label,
+        )
+    ax.plot(mean, label='mean abs', color='r', linewidth=3)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
