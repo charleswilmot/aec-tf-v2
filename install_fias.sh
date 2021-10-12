@@ -1,7 +1,9 @@
-rm -rf /tmp/test_script
-mkdir /tmp/test_script
-touch /tmp/test_script/.bashrc
-install_root=/tmp/test_script
+# rm -rf /tmp/test_script
+# mkdir /tmp/test_script
+# touch /tmp/test_script/.bashrc
+# install_root=/tmp/test_script
+
+install_root=~
 
 
 echo "----- Cloning the repository into $install_root/Code/aec-tf-v2/"
@@ -31,6 +33,12 @@ if [[ $ubuntu_version = 18.04 ]]; then
   #statements
   echo "----- Detected Ubuntu version 18.04, downloading ~200Mb, this might take a few minutes"
   wget -q --show-progress --no-check-certificate -c https://www.coppeliarobotics.com/files/CoppeliaSim_Edu_V4_2_0_Ubuntu18_04.tar.xz -0 - | tar -xJ
+fi
+
+if [[ $ubuntu_version = 16.04 ]]; then
+  #statements
+  echo "----- Detected Ubuntu version 16.04, downloading ~200Mb, this might take a few minutes"
+  wget -q --show-progress --no-check-certificate -c https://www.coppeliarobotics.com/files/CoppeliaSim_Edu_V4_2_0_Ubuntu16_04.tar.xz -0 - | tar -xJ
 fi
 echo "----- CoppeliaSim installed"
 

@@ -80,3 +80,5 @@ python cluster.py experiment.n_episodes=100000
 ```
 
 will queue up a job on the cluster which will run a full experiment (100000 episodes).
+
+For this to work however, you will have to edit the content of the file `cluster_utils.py`, lines 69 to 74. Checkout the content of your `~/.bashrc`. We can also call or text if you need help with this.
