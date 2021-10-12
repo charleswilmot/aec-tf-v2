@@ -132,4 +132,4 @@ dmypy.json
 tmp/
 experiments/
 datasets/
-textures/
+# textures/

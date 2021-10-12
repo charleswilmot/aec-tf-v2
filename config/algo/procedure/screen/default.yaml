@@ -1,6 +1,6 @@
 
 
-textures_path: /home/aecgroup/aecdata/Textures/mcgillManMade_600x600_png_selection/
+textures_path: ${hydra:runtime.cwd}/../textures/
 size: 2.0
 min_distance: 0.5
 max_distance: 5.0
