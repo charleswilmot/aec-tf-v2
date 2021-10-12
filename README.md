@@ -12,6 +12,11 @@ The script `install_fias.sh` does the following:
 If you are not confident with doing all that yourself, just run the script.
 
 
+In order to run the code on FIAS' cluster, you will have to ask the permission to use the `sleuths` partition. For this, Jochen will have to send an email for you to the it@fias to let them know to grant you access to `sleuths`.
+
+
+
+
 ## Usage
 
 ### Running locally
