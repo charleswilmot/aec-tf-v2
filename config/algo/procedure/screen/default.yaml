@@ -5,4 +5,4 @@ size: 2.0
 min_distance: 0.5
 max_distance: 5.0
 max_depth_speed: 0.00
-max_speed_in_deg: 1.125
+max_speed_in_deg: 2.25

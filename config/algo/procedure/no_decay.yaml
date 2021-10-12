@@ -5,7 +5,7 @@ n_evaluation_batch: 20
 batch_size: 64
 updates_per_sample: 16
 reward_scaling: 1500
-max_abs_cyclo_error: 0
+max_abs_cyclo_error: 7.16
 vergence_min_distance_init: 0.5
 vergence_max_distance_init: 5.0
 

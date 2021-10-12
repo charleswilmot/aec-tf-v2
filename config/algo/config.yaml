@@ -7,7 +7,7 @@ simulation:
     -
 
 experiment:
-  n_episodes: 50000
+  n_episodes: 100000
   critic_every: 1
   encoders_every: 1
   evaluate_every: 25
@@ -26,7 +26,7 @@ defaults:
   - agent: default
   - agent/exploration: default
   - agent/scales: default
-  - agent/pathways/pavro: log_vergence
+  - agent/pathways/pavro: log_vergence_log_cyclo_small_cyclo
   - agent/pathways/pavro/vergence_critic_model_arch: conv_32_dense_200_dense_200_dense_n
   - agent/pathways/pavro/cyclo_critic_model_arch: conv_32_dense_200_dense_200_dense_n
   - agent/pathways/pavro/encoder_model_arch: default
