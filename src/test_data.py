@@ -803,7 +803,7 @@ def generate_advanced_test_conf():
         tilt_error=errors,
         vergence_error=errors,
         cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 20).astype(np.float32),
-        n_iterations=20,
+        n_iterations=10,
         name="advanced_testing",
     )
     test_conf.add_vergence_trajectory()
