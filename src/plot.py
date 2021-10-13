@@ -25,9 +25,10 @@ class FigureManager:
 
 def recerr_wrt_error(ax, errors, reconstruction_errors,
         ylim=[0, 0.04], title=None, xlabel=None, ylabel=None, inset=True, legend=False):
-    for e, r in zip(errors, reconstruction_errors):
-        ax.plot(e, r, 'b-', alpha=0.6, linewidth=1)
-    mean = np.mean(reconstruction_errors, axis=0)
+    for e_all_distances, r_all_distances in zip(errors, reconstruction_errors):
+        for e, r in zip(e_all_distances, r_all_distances):
+            ax.plot(e, r, 'b-', alpha=0.6, linewidth=1)
+    mean = np.mean(reconstruction_errors, axis=(0, 1))
     ax.plot(e, mean, 'r-', linewidth=3, label="mean")
     ax.axvline(0, color="k", linestyle="--")
     if inset:

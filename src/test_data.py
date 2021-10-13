@@ -198,7 +198,7 @@ class TestDataContainer:
     def get_tests_lengths(self):
         return [x for x in self.data if type(x) is int]
 
-    def data_by_name(self, name, dim0=None, sort_order=None):
+    def data_by_name(self, name, dim0=None, dim1=None, sort_order=None):
         anchors = self.data["test_description"][name]
         data = self.data[anchors["n_iterations"]]
         where = np.logical_and.reduce([np.in1d(data["conf"][name], val) for name, val in anchors.items()])
@@ -210,12 +210,20 @@ class TestDataContainer:
                 raise ValueError("Impossible to factorize by {}: number of value is not balances. Got {}".format(dim0, dict(zip(unique, count))))
             data = data[np.argsort(data[first][second])]
             data = data.reshape((-1, count[0]))
-            # print(data.shape, data[first][second].shape)
+        elif dim1 is not None:
+            raise ValueError("dim0 is not given while dim1 is. This is not possible.")
+        if dim1 is not None:
+            first, second = dim1.split(".")
+            unique, count = np.unique(data[first][second], return_counts=True)
+            if (count != count[0]).any():
+                raise ValueError("Impossible to factorize by {}: number of value is not balances. Got {}".format(dim1, dict(zip(unique, count))))
+            order = np.argsort(data[first][second], axis=-1)
+            data = np.take_along_axis(data, order, axis=-1)
+            data = data.reshape((data.shape[0], unique.shape[0], -1))
         if sort_order is not None:
             first, second = sort_order.split(".")
-            arg = np.argsort(data[first][second], axis=1).squeeze()
-            # print(data.shape, data[first][second].shape, arg.shape)
-            data = np.take_along_axis(data, arg, axis=1)
+            arg = np.argsort(data[first][second], axis=-1).squeeze()
+            data = np.take_along_axis(data, arg, axis=-1)
         return data
 
     def missing_data(self, *args):
@@ -229,7 +237,7 @@ class TestDataContainer:
             return
         with plot.FigureManager(path + "/reconstruction_error.png", save=save) as fig:
             ax = fig.add_subplot(141)
-            data = self.data_by_name("wrt_pan_error", dim0="conf.stimulus", sort_order="conf.pan_error")
+            data = self.data_by_name("wrt_pan_error", dim0="conf.stimulus", dim1="conf.object_distance", sort_order="conf.pan_error")
             plot.recerr_wrt_error(
                 ax,
                 data["result"]["pan_error"] * DEG_TO_PX,
@@ -240,7 +248,7 @@ class TestDataContainer:
             )
 
             ax = fig.add_subplot(142)
-            data = self.data_by_name("wrt_tilt_error", dim0="conf.stimulus", sort_order="conf.tilt_error")
+            data = self.data_by_name("wrt_tilt_error", dim0="conf.stimulus", dim1="conf.object_distance", sort_order="conf.tilt_error")
             plot.recerr_wrt_error(
                 ax,
                 data["result"]["tilt_error"] * DEG_TO_PX,
@@ -250,7 +258,7 @@ class TestDataContainer:
             )
 
             ax = fig.add_subplot(143)
-            data = self.data_by_name("wrt_vergence_error", dim0="conf.stimulus", sort_order="conf.vergence_error")
+            data = self.data_by_name("wrt_vergence_error", dim0="conf.stimulus", dim1="conf.object_distance", sort_order="conf.vergence_error")
             plot.recerr_wrt_error(
                 ax,
                 data["result"]["vergence_error"] * DEG_TO_PX,
@@ -260,7 +268,7 @@ class TestDataContainer:
             )
 
             ax = fig.add_subplot(144)
-            data = self.data_by_name("wrt_cyclo_pos", dim0="conf.stimulus", sort_order="conf.cyclo_pos")
+            data = self.data_by_name("wrt_cyclo_pos", dim0="conf.stimulus", dim1="conf.object_distance", sort_order="conf.cyclo_pos")
             plot.recerr_wrt_error(
                 ax,
                 data["result"]["cyclo_pos"],
@@ -695,15 +703,15 @@ class TestDataContainer:
     def plot(self, path, save=True):
         os.makedirs(path, exist_ok=True)
         self.plot_recerr_wrt_error(path, save=save)
-        self.plot_predicted_recerr_wrt_error(path, save=save)
         self.plot_action_wrt_error(path, save=save)
         self.plot_action_wrt_error_individual(path, save=save)
         self.plot_abs_error_in_episode(path, save=save)
         self.plot_error_in_episode(path, save=save)
-        self.plot_critic_error(path, save=save)
-        self.plot_reward_wrt_delta_error(path, save=save)
-        self.plot_critic_wrt_delta_error(path, save=save)
-        self.plot_critic_wrt_reward(path, save=save)
+        # self.plot_critic_error(path, save=save)
+        # self.plot_reward_wrt_delta_error(path, save=save)
+        # self.plot_critic_wrt_delta_error(path, save=save)
+        # self.plot_critic_wrt_reward(path, save=save)
+        # self.plot_predicted_recerr_wrt_error(path, save=save)
 
     def get_performance(self, percentiles):
         tmp = {
