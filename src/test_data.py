@@ -765,31 +765,60 @@ def test_data_between(stimulus, object_distance, vergence_error, cyclo_pos, pan_
     return ret
 
 
-if __name__ == "__main__":
+def generate_default_test_conf():
     errors = [90 / 320 * i for i in [-0.5, -1, -1.5, -2, -2.5, -3, -3.5, -4, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]]
     bound_in_px = 8
     cyclo_bound_in_deg = 5
-    # for distance in [2, 4, 6]:
-    #     test_conf = TestDataContainer(
-    #         stimulus=range(20),
-    #         object_distance=[distance],
-    #         pan_error=errors,
-    #         tilt_error=errors,
-    #         vergence_error=errors,
-    #         cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
-    #         n_iterations=20,
-    #         name="default_at_{}m".format(distance)
-    #     )
-    #     test_conf.add_vergence_trajectory()
-    #     test_conf.add_cyclo_trajectory()
-    #     test_conf.add_speed_trajectory("tilt")
-    #     test_conf.add_speed_trajectory("pan")
-    #     test_conf.add_wrt_vergence_error(bound_in_px)
-    #     test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
-    #     test_conf.add_wrt_speed_error("tilt", bound_in_px)
-    #     test_conf.add_wrt_speed_error("pan", bound_in_px)
-    #     test_conf.dump("../config/test_conf/")
+    for distance in [2, 4, 6]:
+        test_conf = TestDataContainer(
+            stimulus=range(20),
+            object_distance=[distance],
+            pan_error=errors,
+            tilt_error=errors,
+            vergence_error=errors,
+            cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 8).astype(np.float32),
+            n_iterations=20,
+            name="default_at_{}m".format(distance)
+        )
+        test_conf.add_vergence_trajectory()
+        test_conf.add_cyclo_trajectory()
+        test_conf.add_speed_trajectory("tilt")
+        test_conf.add_speed_trajectory("pan")
+        test_conf.add_wrt_vergence_error(bound_in_px)
+        test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
+        test_conf.add_wrt_speed_error("tilt", bound_in_px)
+        test_conf.add_wrt_speed_error("pan", bound_in_px)
+        test_conf.dump("../config/test_conf/")
 
+
+def generate_advanced_test_conf():
+    errors = [90 / 320 * i for i in [-0.25, -0.5, -0.75, -1, -1.25, -1.5, -1.75, -2, -2.25, -2.5, -2.75, -3, -3.25, -3.5, -3.75, -4, -4.25, -4.5, -4.75, -5, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5, 4.75, 5]]
+    bound_in_px = 8
+    cyclo_bound_in_deg = 7.16
+    object_distance = [1, 2, 3, 4, 5]
+    test_conf = TestDataContainer(
+        stimulus=range(20),
+        object_distance=object_distance,
+        pan_error=errors,
+        tilt_error=errors,
+        vergence_error=errors,
+        cyclo_pos=np.linspace(-cyclo_bound_in_deg, cyclo_bound_in_deg, 20).astype(np.float32),
+        n_iterations=20,
+        name="advanced_testing",
+    )
+    test_conf.add_vergence_trajectory()
+    test_conf.add_cyclo_trajectory()
+    test_conf.add_speed_trajectory("tilt")
+    test_conf.add_speed_trajectory("pan")
+    test_conf.add_wrt_vergence_error(bound_in_px)
+    test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
+    test_conf.add_wrt_speed_error("tilt", bound_in_px)
+    test_conf.add_wrt_speed_error("pan", bound_in_px)
+    test_conf.dump("../config/test_conf/")
+
+
+def generate_wide_error_range():
+    errors = [90 / 320 * i for i in [-0.5, -1, -1.5, -2, -2.5, -3, -3.5, -4, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]]
     bound_in_px = 24
     cyclo_bound_in_deg = 15
     distance = 2
@@ -849,3 +878,6 @@ if __name__ == "__main__":
     )
     test_conf.add_wrt_cyclo_pos(cyclo_bound_in_deg)
     test_conf.dump("../config/test_conf/")
+
+if __name__ == "__main__":
+    generate_advanced_test_conf()
