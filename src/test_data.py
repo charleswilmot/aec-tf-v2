@@ -245,6 +245,7 @@ class TestDataContainer:
                 ylim=ylim,
                 xlabel="pan error (px/it)",
                 ylabel="Reconstruction error",
+                inset=False,
             )
 
             ax = fig.add_subplot(142)
@@ -255,6 +256,7 @@ class TestDataContainer:
                 data["result"]["recerr_magno"],
                 ylim=ylim,
                 xlabel="tilt error (px/it)",
+                inset=False,
             )
 
             ax = fig.add_subplot(143)
@@ -265,6 +267,7 @@ class TestDataContainer:
                 data["result"]["recerr_pavro"],
                 ylim=ylim,
                 xlabel="vergence error (px)",
+                inset=False,
             )
 
             ax = fig.add_subplot(144)
@@ -275,7 +278,8 @@ class TestDataContainer:
                 data["result"]["recerr_pavro"],
                 ylim=ylim,
                 xlabel="cyclo error (deg)",
-                legend=True
+                legend=True,
+                inset=False,
             )
 
     def plot_predicted_recerr_wrt_error(self, path, ylim=[0, 0.04], save=True):
