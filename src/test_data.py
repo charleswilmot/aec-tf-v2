@@ -880,4 +880,5 @@ def generate_wide_error_range():
     test_conf.dump("../config/test_conf/")
 
 if __name__ == "__main__":
+    generate_default_test_conf()
     generate_advanced_test_conf()
